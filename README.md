@@ -41,6 +41,65 @@ laadpaal.
    deze onder de service `com.victronenergy.evcharger.*`, waardoor de laadpaal in
    de GX-GUI en VRM als EV-lader verschijnt.
 
+## Twee weergaven: energiemeter vs. volledige EV-charger
+
+Belangrijk om te begrijpen: een **energiemeter met rol EV charger** is in Venus OS
+een *meet*-apparaat. Het publiceert alleen meterwaarden:
+
+- `Ac/Power`, `Ac/Energy/Forward`
+- `Ac/L1..L3/Voltage`, `Ac/L1..L3/Current`, `Ac/L1..L3/Power` (zichtbaar op de
+  eigen apparaatpagina van de meter)
+
+Het levert **niet** de EV-charger *sessie-interface* (`/Current`, `/ChargingTime`,
+`/Session/Time`, `/Session/Energy`, `/Status`). Daarom blijven op de
+EV-charger-pagina de velden **laadstroom, sessie-energie en laadtijd leeg** — die
+horen bij een echte laadpaal, niet bij een meter. Ook toont de EV-charger-pagina
+per fase alleen *vermogen*, niet stroom (die staat wel op de meterpagina zelf).
+
+Er zijn dus twee opties:
+
+| Wil je...                                            | Gebruik                                  |
+|------------------------------------------------------|------------------------------------------|
+| Alleen verbruik meten (vermogen + energie)           | **Energiemeter** (rol EV charger) — standaard in dit flow |
+| Volledige EV-charger (laadstroom, sessie, tijd, status) | **dbus-mqtt-ev-charger driver** — zie hieronder |
+
+### Optie 2: volledige EV-charger via de `dbus-mqtt-ev-charger` driver
+
+`node-red-contrib-victron` kan zelf geen volledig EV-charger-D-Bus-object maken.
+Daarvoor gebruik je de community-driver
+[`mr-manuel/venus-os_dbus-mqtt-ev-charger`](https://github.com/mr-manuel/venus-os_dbus-mqtt-ev-charger),
+die op basis van MQTT een echte `com.victronenergy.evcharger` service publiceert
+(met laadstroom, sessie-energie, sessie-tijd en status).
+
+In dit flow is daarvoor de tak **`5. Zaptec -> EV charger (MQTT driver)`** →
+**`Venus OS broker`** (MQTT) al aanwezig. Zo activeer je hem:
+
+1. Installeer de driver op de GX (SSH):
+
+   ```bash
+   wget -O /tmp/download_dbus-mqtt-ev-charger.sh https://raw.githubusercontent.com/mr-manuel/venus-os_dbus-mqtt-ev-charger/master/download.sh
+   bash /tmp/download_dbus-mqtt-ev-charger.sh
+   ```
+
+2. Zet in `/data/etc/dbus-mqtt-ev-charger/config.ini`:
+   - `broker_address = 127.0.0.1`
+   - `topic = custom/ev-charger` (of je eigen topic; zet dan ook
+     `ZAPTEC_EVCHARGER_TOPIC` gelijk in Node-RED)
+
+   en installeer de service met `bash /data/etc/dbus-mqtt-ev-charger/install.sh`.
+
+3. In Node-RED wijst de node **Venus OS broker** naar `127.0.0.1:1883` (de
+   ingebouwde broker van Venus OS Large). Deploy.
+
+4. **Voorkom dubbele apparaten:** gebruik je Optie 2, verwijder of deactiveer dan
+   de node **`Laadpaal-meter (Victron)`** (de energiemeter), anders verschijnt de
+   laadpaal twee keer.
+
+De Node-RED-tak vult de driver met o.a.: `Ac/Power`, `Ac/L1..L3/Power`,
+`Ac/Energy/Forward`, `Current` (hoogste fasestroom), `Status` (uit
+ChargerOperationMode), `Session/Energy` (obs. 553) en `Session/Time`
+(bijgehouden vanaf start laden).
+
 ### Gebruikte Zaptec observatie-ID's
 
 | ID   | Naam                    | Gebruik in Victron            |
@@ -49,7 +108,11 @@ laadpaal.
 | 501/502/503 | VoltagePhase1/2/3 | `Ac/L{1,2,3}/Voltage` (V)     |
 | 507/508/509 | CurrentPhase1/2/3 | `Ac/L{1,2,3}/Current` (A)     |
 | 513  | TotalChargePower        | `Ac/Power` (W)                |
+| 553  | TotalChargePowerSession | `Session/Energy` (kWh, Optie 2) |
 | 554  | SignedMeterValue (OCMF) | `Ac/Energy/Forward` (kWh)     |
+| 708  | ChargeCurrentSet        | `SetCurrent`/`MaxCurrent` (A, Optie 2) |
+| 710  | ChargerOperationMode    | `Status` (Optie 2)            |
+| 721  | SessionIdentifier       | sessie-detectie voor `Session/Time` |
 
 Per-fase vermogen wordt berekend als `V × I`. De totale energie
 (`Ac/Energy/Forward`) komt bij voorkeur uit de gesigneerde OCMF-meterstand
@@ -108,6 +171,7 @@ Zet op de GX de volgende variabelen (bijv. via de Node-RED `settings.js` onder
 | `ZAPTEC_CHARGER_ID`  | ja        | –                         | GUID (`Id`) van de laadpaal          |
 | `ZAPTEC_BASE_URL`    | nee       | `https://api.zaptec.com`  | API-basis-URL                        |
 | `ZAPTEC_METER_POSITION` | nee    | `1` (AC-in 1)             | Positie in het systeem: `0` = AC-uit, `1` = AC-in 1, `2` = AC-in 2 |
+| `ZAPTEC_EVCHARGER_TOPIC` | nee   | `custom/ev-charger`       | MQTT-topic voor de `dbus-mqtt-ev-charger` driver (alleen Optie 2) |
 
 ### Optie B – Rechtstreeks in de flow
 

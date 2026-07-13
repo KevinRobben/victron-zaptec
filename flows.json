@@ -152,7 +152,8 @@
         "y": 200,
         "wires": [
             [
-                "m_map"
+                "m_map",
+                "m_evmap"
             ]
         ]
     },
@@ -208,6 +209,54 @@
         "statusType": "auto",
         "x": 1090,
         "y": 280,
+        "wires": []
+    },
+    {
+        "id": "m_comment2",
+        "type": "comment",
+        "z": "f_main",
+        "name": "Optioneel: volledige EV-charger (laadstroom/sessie/tijd) via dbus-mqtt-ev-charger driver",
+        "info": "",
+        "x": 420,
+        "y": 360,
+        "wires": []
+    },
+    {
+        "id": "m_evmap",
+        "type": "function",
+        "z": "f_main",
+        "name": "5. Zaptec -> EV charger (MQTT driver)",
+        "func": "// Bouwt een VOLLEDIGE Victron EV-charger payload voor de driver 'dbus-mqtt-ev-charger'.\n// Zo verschijnen laadstroom, sessie-energie, sessie-tijd en status op de EV-charger-pagina.\n// Vereist: driver geinstalleerd op Venus OS die luistert op het topic hieronder.\nconst obs = Array.isArray(msg.payload)\n    ? msg.payload\n    : (msg.payload && Array.isArray(msg.payload.Data) ? msg.payload.Data : []);\nif (!obs.length) { return null; }\n\nconst s = {};\nfor (const o of obs) {\n    if (o && o.StateId !== undefined && o.StateId !== null) s[o.StateId] = o.ValueAsString;\n}\nconst num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };\nconst r = (v, d) => { const f = Math.pow(10, d === undefined ? 0 : d); return Math.round((v || 0) * f) / f; };\n\nconst v1 = num(s[501]), v2 = num(s[502]), v3 = num(s[503]);\nconst i1 = num(s[507]), i2 = num(s[508]), i3 = num(s[509]);\nlet pTotal = num(s[513]);\nconst p1 = v1 * i1, p2 = v2 * i2, p3 = v3 * i3;\nif (!pTotal) pTotal = p1 + p2 + p3;\n\n// Laadstroom (A): hoogste fasestroom (fasen zijn doorgaans gelijk).\nconst current = Math.max(i1, i2, i3);\n\n// Totale energie (kWh): hergebruik dezelfde teller als node 4 (OCMF/integratie).\nlet ef = flow.get('zaptecEnergyForward');\nif (typeof ef !== 'number' || isNaN(ef)) ef = 0;\n\n// Sessie-energie (kWh) uit Zaptec observatie 553.\nconst sessionEnergy = num(s[553]);\n\n// Online + status uit ChargerOperationMode (710).\nlet online = 1;\nif (s[-2] !== undefined) online = (s[-2] === '1' || s[-2] === 1) ? 1 : 0;\nconst mode = parseInt(s[710], 10);\nlet status = 0; // 0=Disconnected, 1=Connected, 2=Charging, 3=Charged\nif (mode === 2) status = 1;\nelse if (mode === 3) status = 2;\nelse if (mode === 5) status = 3;\n\n// Sessie-laadtijd (s): bijhouden vanaf het moment dat laden start.\nconst nowMs = Date.now();\nconst sessId = s[721] || '';\nlet sess = flow.get('zaptecSession') || {};\nlet chargingTime = 0;\nif (status === 2) {\n    if (sess.id !== sessId || !sess.start) sess = { id: sessId, start: nowMs, last: nowMs };\n    sess.last = nowMs;\n    chargingTime = Math.round((nowMs - sess.start) / 1000);\n} else if (status === 3 && sess.id === sessId && sess.start) {\n    chargingTime = Math.round(((sess.last || nowMs) - sess.start) / 1000);\n} else if (status === 0) {\n    sess = {};\n}\nflow.set('zaptecSession', sess);\n\n// Optioneel: ingestelde/max laadstroom (observatie 708 ChargeCurrentSet).\nconst setCurrent = num(s[708]);\n\nmsg.payload = {\n    Ac: {\n        Power: r(pTotal, 1),\n        L1: { Power: r(p1, 1) },\n        L2: { Power: r(p2, 1) },\n        L3: { Power: r(p3, 1) },\n        Energy: { Forward: r(ef, 3) }\n    },\n    Current: r(current, 2),\n    Status: status,\n    Connected: online,\n    ChargingTime: chargingTime,\n    Session: { Time: chargingTime, Energy: r(sessionEnergy, 3) }\n};\nif (setCurrent > 0) {\n    msg.payload.SetCurrent = r(setCurrent, 0);\n    msg.payload.MaxCurrent = r(setCurrent, 0);\n}\n\nmsg.topic = env.get('ZAPTEC_EVCHARGER_TOPIC') || 'custom/ev-charger';\nnode.status({ fill: status >= 2 ? 'green' : 'grey', shape: 'dot', text: 'status ' + status + ' | ' + r(current, 1) + ' A | ' + r(sessionEnergy, 2) + ' kWh' });\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1090,
+        "y": 360,
+        "wires": [
+            [
+                "m_mqtt"
+            ]
+        ]
+    },
+    {
+        "id": "m_mqtt",
+        "type": "mqtt out",
+        "z": "f_main",
+        "name": "Venus OS broker",
+        "topic": "",
+        "qos": "0",
+        "retain": "false",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "b_local",
+        "x": 1360,
+        "y": 360,
         "wires": []
     },
     {
@@ -408,5 +457,32 @@
         "x": 750,
         "y": 200,
         "wires": []
+    },
+    {
+        "id": "b_local",
+        "type": "mqtt-broker",
+        "name": "Venus OS broker (localhost)",
+        "broker": "127.0.0.1",
+        "port": "1883",
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
     }
 ]
