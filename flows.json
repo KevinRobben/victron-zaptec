@@ -1,0 +1,412 @@
+[
+    {
+        "id": "f_main",
+        "type": "tab",
+        "label": "Zaptec -> Victron (laadpaal-meter)",
+        "disabled": false,
+        "info": "Leest een Zaptec laadpaal (read-only) uit de centrale ZapCloud en presenteert de meetwaarden in Victron als een energiemeter met rol 'EV charger'.\n\nStel de credentials in via OS-omgevingsvariabelen op de GX (aanbevolen) of pas de standaardwaarden aan in de functie '1. Config & token'.\n\nBenodigde omgevingsvariabelen:\n- ZAPTEC_USERNAME\n- ZAPTEC_PASSWORD\n- ZAPTEC_CHARGER_ID (de GUID van de laadpaal; op te zoeken via het tabblad 'Zaptec - chargers opzoeken')\n- ZAPTEC_BASE_URL (optioneel, standaard https://api.zaptec.com)"
+    },
+    {
+        "id": "m_comment",
+        "type": "comment",
+        "z": "f_main",
+        "name": "Zaptec (read-only) -> Victron energiemeter met rol EV charger",
+        "info": "1) Stel credentials + charger-GUID in (env vars of functie '1. Config & token').\n2) Deploy. De virtuele energiemeter verschijnt op de GX/VRM als EV charger.\n3) Pas het poll-interval aan in de inject node (standaard 30s).",
+        "x": 300,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "m_poll",
+        "type": "inject",
+        "z": "f_main",
+        "name": "Poll (30s)",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "30",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "3",
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 130,
+        "y": 140,
+        "wires": [
+            [
+                "m_prep"
+            ]
+        ]
+    },
+    {
+        "id": "m_prep",
+        "type": "function",
+        "z": "f_main",
+        "name": "1. Config & token",
+        "func": "// === Zaptec configuratie ===\n// Stel bij voorkeur OS-omgevingsvariabelen in op de GX (aanbevolen).\n// Anders kun je de standaardwaarden hieronder aanpassen.\nconst cfg = {\n    baseUrl: env.get('ZAPTEC_BASE_URL') || 'https://api.zaptec.com',\n    username: env.get('ZAPTEC_USERNAME') || 'VUL_IN@voorbeeld.nl',\n    password: env.get('ZAPTEC_PASSWORD') || 'VUL_WACHTWOORD_IN',\n    chargerId: env.get('ZAPTEC_CHARGER_ID') || 'VUL_CHARGER_GUID_IN'\n};\nflow.set('zaptecCfg', cfg);\n\nconst token = flow.get('zaptecToken');\nconst expiry = flow.get('zaptecTokenExpiry') || 0;\n\n// Hergebruik een geldig token (met 60s marge) om onnodige logins te voorkomen.\nif (token && Date.now() < (expiry - 60000)) {\n    msg.access_token = token;\n    node.status({ fill: 'green', shape: 'dot', text: 'token ok' });\n    return [null, msg];\n}\n\n// Nieuw token nodig via OAuth2 password grant (ROPC).\nmsg.method = 'POST';\nmsg.url = cfg.baseUrl + '/oauth/token';\nmsg.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };\nmsg.payload = 'grant_type=password'\n    + '&username=' + encodeURIComponent(cfg.username)\n    + '&password=' + encodeURIComponent(cfg.password)\n    + '&scope=openid';\nnode.status({ fill: 'blue', shape: 'ring', text: 'token ophalen...' });\nreturn [msg, null];\n",
+        "outputs": 2,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 320,
+        "y": 140,
+        "wires": [
+            [
+                "m_tok"
+            ],
+            [
+                "m_build"
+            ]
+        ],
+        "outputLabels": [
+            "nieuw token nodig",
+            "token geldig"
+        ]
+    },
+    {
+        "id": "m_tok",
+        "type": "http request",
+        "z": "f_main",
+        "name": "POST /oauth/token",
+        "method": "use",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 540,
+        "y": 100,
+        "wires": [
+            [
+                "m_store"
+            ]
+        ]
+    },
+    {
+        "id": "m_store",
+        "type": "function",
+        "z": "f_main",
+        "name": "2. Token opslaan",
+        "func": "const body = msg.payload || {};\nif (!body.access_token) {\n    node.status({ fill: 'red', shape: 'dot', text: 'auth mislukt' });\n    node.error('Zaptec: geen access_token ontvangen. Controleer gebruikersnaam/wachtwoord.', msg);\n    return null;\n}\nflow.set('zaptecToken', body.access_token);\nconst ttlMs = (Number(body.expires_in) || 3600) * 1000;\nflow.set('zaptecTokenExpiry', Date.now() + ttlMs);\nmsg.access_token = body.access_token;\nnode.status({ fill: 'green', shape: 'dot', text: 'token vernieuwd' });\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 760,
+        "y": 100,
+        "wires": [
+            [
+                "m_build"
+            ]
+        ]
+    },
+    {
+        "id": "m_build",
+        "type": "function",
+        "z": "f_main",
+        "name": "3. State-request bouwen",
+        "func": "const cfg = flow.get('zaptecCfg') || {};\nconst token = msg.access_token || flow.get('zaptecToken');\nif (!token) {\n    node.error('Geen Zaptec-token beschikbaar.', msg);\n    return null;\n}\nif (!cfg.chargerId || /VUL_/.test(cfg.chargerId)) {\n    node.status({ fill: 'red', shape: 'dot', text: 'charger-id ontbreekt' });\n    node.error('ZAPTEC_CHARGER_ID is niet ingesteld. Zoek de GUID op via het tabblad \"Zaptec - chargers opzoeken\".', msg);\n    return null;\n}\nmsg.method = 'GET';\nmsg.headers = { 'Authorization': 'Bearer ' + token };\nmsg.url = cfg.baseUrl + '/api/chargers/' + encodeURIComponent(cfg.chargerId) + '/state';\ndelete msg.payload;\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 560,
+        "y": 200,
+        "wires": [
+            [
+                "m_state"
+            ]
+        ]
+    },
+    {
+        "id": "m_state",
+        "type": "http request",
+        "z": "f_main",
+        "name": "GET /api/chargers/{id}/state",
+        "method": "use",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 810,
+        "y": 200,
+        "wires": [
+            [
+                "m_map"
+            ]
+        ]
+    },
+    {
+        "id": "m_map",
+        "type": "function",
+        "z": "f_main",
+        "name": "4. Zaptec -> Victron energiemeter",
+        "func": "// Zet Zaptec state-observaties om naar payload voor een Victron energiemeter (rol: EV charger).\nconst obs = Array.isArray(msg.payload)\n    ? msg.payload\n    : (msg.payload && Array.isArray(msg.payload.Data) ? msg.payload.Data : []);\nif (!obs.length) {\n    node.status({ fill: 'yellow', shape: 'ring', text: 'geen state ontvangen' });\n    return null;\n}\n\n// Observaties indexeren op StateId.\nconst s = {};\nfor (const o of obs) {\n    if (o && o.StateId !== undefined && o.StateId !== null) {\n        s[o.StateId] = o.ValueAsString;\n    }\n}\n\nconst num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };\nconst r = (v, d) => { const f = Math.pow(10, d === undefined ? 0 : d); return Math.round((v || 0) * f) / f; };\n\n// Zaptec observatie-ID's (zie https://api.zaptec.com/api/constants).\nconst v1 = num(s[501]), v2 = num(s[502]), v3 = num(s[503]); // Voltage L1/L2/L3 (V)\nconst i1 = num(s[507]), i2 = num(s[508]), i3 = num(s[509]); // Current L1/L2/L3 (A)\nlet pTotal = num(s[513]);                                    // TotalChargePower (W)\n\n// Vermogen per fase (schijnbaar vermogen V*I; EV-laden benadert cos phi = 1).\nconst p1 = v1 * i1, p2 = v2 * i2, p3 = v3 * i3;\nconst pSum = p1 + p2 + p3;\nif (!pTotal) pTotal = pSum;\n\n// Online-status (IsOnline = observatie -2). Als afwezig: aannemen online.\nlet online = 1;\nif (s[-2] !== undefined) online = (s[-2] === '1' || s[-2] === 1) ? 1 : 0;\n\n// Totale (levensduur) energie in kWh voor /Ac/Energy/Forward.\nlet ef = flow.get('zaptecEnergyForward');\nif (typeof ef !== 'number' || isNaN(ef)) ef = 0;\nconst nowMs = Date.now();\nconst lastMs = flow.get('zaptecEnergyTs') || nowMs;\n\n// Probeer de officiele gesigneerde meterstand (OCMF, observatie 554) te lezen.\nfunction parseOcmfKwh(str) {\n    if (!str || typeof str !== 'string' || str.indexOf('OCMF') === -1) return null;\n    try {\n        const parts = str.split('|');\n        for (const p of parts) {\n            const t = p.trim();\n            if (t.charAt(0) === '{' && t.indexOf('\"RD\"') !== -1) {\n                const j = JSON.parse(t);\n                if (Array.isArray(j.RD) && j.RD.length) {\n                    const last = j.RD[j.RD.length - 1];\n                    if (last && last.RV !== undefined && last.RV !== null) {\n                        const val = parseFloat(last.RV);\n                        if (!isNaN(val)) return val;\n                    }\n                }\n            }\n        }\n    } catch (e) { /* negeren, val terug op integratie */ }\n    return null;\n}\n\nconst ocmf = parseOcmfKwh(s[554]);\nif (ocmf !== null && ocmf >= ef) {\n    ef = ocmf; // gebruik de officiele meterstand indien beschikbaar\n} else {\n    // Terugval: integreer vermogen over tijd. Guard voorkomt sprongen na downtime.\n    const dtH = (nowMs - lastMs) / 3600000;\n    if (dtH > 0 && dtH < 1) ef += (pTotal * dtH) / 1000;\n}\nflow.set('zaptecEnergyForward', ef);\nflow.set('zaptecEnergyTs', nowMs);\n\nmsg.payload = {\n    Connected: online,\n    'Ac/Power': r(pTotal, 1),\n    'Ac/Energy/Forward': r(ef, 3),\n    'Ac/L1/Voltage': r(v1, 1),\n    'Ac/L1/Current': r(i1, 2),\n    'Ac/L1/Power': r(p1, 1),\n    'Ac/L2/Voltage': r(v2, 1),\n    'Ac/L2/Current': r(i2, 2),\n    'Ac/L2/Power': r(p2, 1),\n    'Ac/L3/Voltage': r(v3, 1),\n    'Ac/L3/Current': r(i3, 2),\n    'Ac/L3/Power': r(p3, 1)\n};\n\nnode.status({ fill: online ? 'green' : 'grey', shape: 'dot', text: r(pTotal, 0) + ' W | ' + r(ef, 2) + ' kWh' });\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1080,
+        "y": 200,
+        "wires": [
+            [
+                "m_meter",
+                "m_dbg"
+            ]
+        ]
+    },
+    {
+        "id": "m_meter",
+        "type": "victron-virtual",
+        "z": "f_main",
+        "name": "Laadpaal-meter (Victron)",
+        "device": "energymeter",
+        "energymeter_role": "evcharger",
+        "energymeter_nrofphases": 3,
+        "default_values": true,
+        "outputs": 1,
+        "x": 1360,
+        "y": 200,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "m_dbg",
+        "type": "debug",
+        "z": "f_main",
+        "name": "meter payload",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1090,
+        "y": 280,
+        "wires": []
+    },
+    {
+        "id": "m_catch",
+        "type": "catch",
+        "z": "f_main",
+        "name": "fouten",
+        "scope": null,
+        "uncaught": false,
+        "x": 130,
+        "y": 320,
+        "wires": [
+            [
+                "m_errdbg"
+            ]
+        ]
+    },
+    {
+        "id": "m_errdbg",
+        "type": "debug",
+        "z": "f_main",
+        "name": "fout",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": true,
+        "complete": "error",
+        "targetType": "msg",
+        "statusVal": "error.message",
+        "statusType": "auto",
+        "x": 310,
+        "y": 320,
+        "wires": []
+    },
+    {
+        "id": "f_help",
+        "type": "tab",
+        "label": "Zaptec - chargers opzoeken",
+        "disabled": false,
+        "info": "Hulpmiddel om de charger-GUID (Id) en DeviceId van je laadpalen op te zoeken.\nKlik op de inject-knop en bekijk het debug-paneel. Gebruik de 'Id' als ZAPTEC_CHARGER_ID."
+    },
+    {
+        "id": "h_comment",
+        "type": "comment",
+        "z": "f_help",
+        "name": "Klik op 'Lijst chargers' en bekijk het debug-paneel voor de 'Id' (GUID)",
+        "info": "",
+        "x": 380,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "h_go",
+        "type": "inject",
+        "z": "f_help",
+        "name": "Lijst chargers",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 130,
+        "y": 120,
+        "wires": [
+            [
+                "h_auth"
+            ]
+        ]
+    },
+    {
+        "id": "h_auth",
+        "type": "function",
+        "z": "f_help",
+        "name": "Auth-request bouwen",
+        "func": "const cfg = {\n    baseUrl: env.get('ZAPTEC_BASE_URL') || 'https://api.zaptec.com',\n    username: env.get('ZAPTEC_USERNAME') || 'VUL_IN@voorbeeld.nl',\n    password: env.get('ZAPTEC_PASSWORD') || 'VUL_WACHTWOORD_IN'\n};\nflow.set('zaptecCfg', cfg);\nmsg.method = 'POST';\nmsg.url = cfg.baseUrl + '/oauth/token';\nmsg.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };\nmsg.payload = 'grant_type=password'\n    + '&username=' + encodeURIComponent(cfg.username)\n    + '&password=' + encodeURIComponent(cfg.password)\n    + '&scope=openid';\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 340,
+        "y": 120,
+        "wires": [
+            [
+                "h_tok"
+            ]
+        ]
+    },
+    {
+        "id": "h_tok",
+        "type": "http request",
+        "z": "f_help",
+        "name": "POST /oauth/token",
+        "method": "use",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 560,
+        "y": 120,
+        "wires": [
+            [
+                "h_list"
+            ]
+        ]
+    },
+    {
+        "id": "h_list",
+        "type": "function",
+        "z": "f_help",
+        "name": "Chargers-request bouwen",
+        "func": "const cfg = flow.get('zaptecCfg') || { baseUrl: 'https://api.zaptec.com' };\nconst body = msg.payload || {};\nif (!body.access_token) {\n    node.error('Auth mislukt: controleer gebruikersnaam/wachtwoord.', msg);\n    return null;\n}\nmsg.method = 'GET';\nmsg.headers = { 'Authorization': 'Bearer ' + body.access_token };\nmsg.url = cfg.baseUrl + '/api/chargers';\ndelete msg.payload;\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 790,
+        "y": 120,
+        "wires": [
+            [
+                "h_get"
+            ]
+        ]
+    },
+    {
+        "id": "h_get",
+        "type": "http request",
+        "z": "f_help",
+        "name": "GET /api/chargers",
+        "method": "use",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 340,
+        "y": 200,
+        "wires": [
+            [
+                "h_fmt"
+            ]
+        ]
+    },
+    {
+        "id": "h_fmt",
+        "type": "function",
+        "z": "f_help",
+        "name": "Overzicht maken",
+        "func": "const data = (msg.payload && Array.isArray(msg.payload.Data)) ? msg.payload.Data : [];\nmsg.payload = data.map(c => ({\n    Id: c.Id,\n    DeviceId: c.DeviceId,\n    Name: c.Name,\n    InstallationName: c.InstallationName,\n    IsOnline: c.IsOnline\n}));\nnode.status({ fill: 'green', shape: 'dot', text: data.length + ' charger(s)' });\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 560,
+        "y": 200,
+        "wires": [
+            [
+                "h_dbg"
+            ]
+        ]
+    },
+    {
+        "id": "h_dbg",
+        "type": "debug",
+        "z": "f_help",
+        "name": "chargers",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 750,
+        "y": 200,
+        "wires": []
+    }
+]
