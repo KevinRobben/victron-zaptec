@@ -19,7 +19,7 @@
         "name": "Zaptec",
         "path": "/dashboard",
         "appIcon": "",
-        "includeClientData": true,
+        "includeClientData": false,
         "acceptsClientConfig": [
             "ui-notification",
             "ui-control"
@@ -31,7 +31,7 @@
         "showReconnectNotification": true,
         "notificationDisplayTime": 1,
         "showDisconnectNotification": true,
-        "allowInstall": true
+        "allowInstall": false
     },
     {
         "id": "ui_theme",
@@ -141,7 +141,7 @@
         "id": "d_file_in",
         "type": "file in",
         "z": "f_dash",
-        "name": "Lees /data/zaptec-config.json",
+        "name": "Lees config",
         "filename": "/data/zaptec-config.json",
         "filenameType": "str",
         "format": "utf8",
@@ -149,7 +149,7 @@
         "sendError": false,
         "encoding": "none",
         "allProps": false,
-        "x": 400,
+        "x": 370,
         "y": 100,
         "wires": [
             [
@@ -162,14 +162,14 @@
         "type": "function",
         "z": "f_dash",
         "name": "Config -> context + prefill",
-        "func": "// Ingevulde config uit /data lezen en in global context zetten (+ formulier vooraf invullen).\nlet cfg = {};\ntry { cfg = JSON.parse(msg.payload); } catch (e) { cfg = {}; }\nif (cfg && typeof cfg === 'object') {\n    global.set('zaptecCfg', cfg);\n    node.status({ fill: 'green', shape: 'dot', text: 'config geladen' });\n    msg.payload = {\n        username: cfg.username || '',\n        password: cfg.password || '',\n        chargerId: cfg.chargerId || ''\n    };\n    return msg;\n}\nreturn null;\n",
+        "func": "// Opgeslagen config uit /data lezen, in global context zetten en formulier voorvullen.\nlet cfg = {};\ntry { cfg = JSON.parse(msg.payload); } catch (e) { cfg = {}; }\nif (cfg && typeof cfg === 'object' && cfg.username) {\n    global.set('zaptecCfg', cfg);\n    node.status({ fill: 'green', shape: 'dot', text: 'config geladen' });\n    msg.payload = { username: cfg.username || '', password: cfg.password || '', chargerId: cfg.chargerId || '' };\n    return msg;\n}\nreturn null;\n",
         "outputs": 1,
         "timeout": "",
         "noerr": 0,
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 660,
+        "x": 620,
         "y": 100,
         "wires": [
             [
@@ -234,18 +234,21 @@
         "type": "function",
         "z": "f_dash",
         "name": "Config opslaan",
-        "func": "// Formulierwaarden opslaan: naar global context + persistent bestand op /data.\nconst p = msg.payload || {};\nconst cfg = {\n    baseUrl: (p.baseUrl && String(p.baseUrl).trim()) || 'https://api.zaptec.com',\n    username: String(p.username || '').trim(),\n    password: String(p.password || ''),\n    chargerId: String(p.chargerId || '').trim()\n};\nif (!cfg.username || !cfg.password || !cfg.chargerId) {\n    node.status({ fill: 'red', shape: 'dot', text: 'vul alle velden in' });\n    return null;\n}\nglobal.set('zaptecCfg', cfg);\n// Nieuwe inloggegevens: bestaand token ongeldig maken.\nglobal.set('zaptecToken', null);\nglobal.set('zaptecTokenExpiry', 0);\nmsg.payload = JSON.stringify(cfg, null, 2);\nmsg.filename = \"/data/zaptec-config.json\";\nnode.status({ fill: 'green', shape: 'dot', text: 'opgeslagen' });\nreturn msg;\n",
-        "outputs": 1,
+        "func": "// Formulier opslaan -> global context + persistent bestand. Uitgang 1 = bestand, uitgang 2 = melding.\nconst p = msg.payload || {};\nconst cfg = {\n    baseUrl: (p.baseUrl && String(p.baseUrl).trim()) || 'https://api.zaptec.com',\n    username: String(p.username || '').trim(),\n    password: String(p.password || ''),\n    chargerId: String(p.chargerId || '').trim()\n};\nif (!cfg.username || !cfg.password || !cfg.chargerId) {\n    node.status({ fill: 'red', shape: 'dot', text: 'vul alle velden in' });\n    return [null, { payload: 'Vul gebruikersnaam, wachtwoord en charger Id in.' }];\n}\nglobal.set('zaptecCfg', cfg);\nglobal.set('zaptecToken', null);\nglobal.set('zaptecTokenExpiry', 0);\nnode.status({ fill: 'green', shape: 'dot', text: 'opgeslagen' });\nreturn [\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" },\n    { payload: 'Configuratie opgeslagen. Het uitlezen start automatisch.' }\n];\n",
+        "outputs": 2,
         "timeout": "",
         "noerr": 0,
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 660,
+        "x": 650,
         "y": 180,
         "wires": [
             [
                 "d_file_out"
+            ],
+            [
+                "d_notif"
             ]
         ]
     },
@@ -253,15 +256,15 @@
         "id": "d_file_out",
         "type": "file",
         "z": "f_dash",
-        "name": "Schrijf /data/zaptec-config.json",
+        "name": "Schrijf config",
         "filename": "/data/zaptec-config.json",
         "filenameType": "str",
         "appendNewline": false,
         "createDir": true,
         "overwriteFile": "true",
         "encoding": "utf8",
-        "x": 900,
-        "y": 180,
+        "x": 880,
+        "y": 160,
         "wires": [
             []
         ]
@@ -298,7 +301,7 @@
         "pointerupPayload": "",
         "pointerupPayloadType": "str",
         "x": 150,
-        "y": 260,
+        "y": 280,
         "wires": [
             [
                 "d_fn_listauth"
@@ -310,18 +313,22 @@
         "type": "function",
         "z": "f_dash",
         "name": "Auth voor lijst",
-        "func": "// Token ophalen om de laadpalen van dit account te tonen.\nconst g = global.get('zaptecCfg') || {};\nif (!g.username || !g.password) {\n    node.status({ fill: 'yellow', shape: 'ring', text: 'vul eerst inloggegevens in' });\n    return null;\n}\nconst baseUrl = g.baseUrl || 'https://api.zaptec.com';\nflow.set('listBaseUrl', baseUrl);\nmsg.method = 'POST';\nmsg.url = baseUrl + '/oauth/token';\nmsg.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };\nmsg.payload = 'grant_type=password'\n    + '&username=' + encodeURIComponent(g.username)\n    + '&password=' + encodeURIComponent(g.password)\n    + '&scope=openid';\nnode.status({ fill: 'blue', shape: 'ring', text: 'ophalen...' });\nreturn msg;\n",
-        "outputs": 1,
+        "func": "// Token ophalen om de laadpalen te tonen. Uitgang 1 = tokenrequest, uitgang 2 = melding.\nconst g = global.get('zaptecCfg') || {};\nif (!g.username || !g.password) {\n    node.status({ fill: 'yellow', shape: 'ring', text: 'geen inloggegevens' });\n    return [null, { payload: 'Vul eerst gebruikersnaam en wachtwoord in en klik Opslaan.' }];\n}\nconst baseUrl = g.baseUrl || 'https://api.zaptec.com';\nflow.set('listBaseUrl', baseUrl);\nmsg.method = 'POST';\nmsg.url = baseUrl + '/oauth/token';\nmsg.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };\nmsg.payload = 'grant_type=password'\n    + '&username=' + encodeURIComponent(g.username)\n    + '&password=' + encodeURIComponent(g.password)\n    + '&scope=openid';\nnode.status({ fill: 'blue', shape: 'ring', text: 'ophalen...' });\nreturn [msg, null];\n",
+        "outputs": 2,
         "timeout": "",
         "noerr": 0,
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 380,
-        "y": 260,
+        "x": 370,
+        "y": 280,
         "wires": [
             [
                 "d_tok"
+            ],
+            [
+                "d_md",
+                "d_notif"
             ]
         ]
     },
@@ -339,10 +346,10 @@
         "proxy": "",
         "insecureHTTPParser": false,
         "authType": "",
-        "senderr": false,
+        "senderr": true,
         "headers": [],
         "x": 590,
-        "y": 260,
+        "y": 280,
         "wires": [
             [
                 "d_fn_listreq"
@@ -354,18 +361,22 @@
         "type": "function",
         "z": "f_dash",
         "name": "Chargers-request",
-        "func": "const b = msg.payload || {};\nif (!b.access_token) {\n    node.status({ fill: 'red', shape: 'dot', text: 'auth mislukt' });\n    node.error('Auth mislukt: controleer inloggegevens.', msg);\n    return null;\n}\nconst baseUrl = flow.get('listBaseUrl') || 'https://api.zaptec.com';\nmsg.method = 'GET';\nmsg.headers = { 'Authorization': 'Bearer ' + b.access_token };\nmsg.url = baseUrl + '/api/chargers';\ndelete msg.payload;\nreturn msg;\n",
-        "outputs": 1,
+        "func": "// Uitgang 1 = chargers-request, uitgang 2 = foutmelding.\nconst body = (msg.payload && typeof msg.payload === 'object') ? msg.payload : {};\nif (!body.access_token) {\n    const code = msg.statusCode || '?';\n    node.status({ fill: 'red', shape: 'dot', text: 'auth mislukt (' + code + ')' });\n    return [null, { payload: 'Inloggen bij Zaptec mislukt (HTTP ' + code + '). Controleer gebruikersnaam en wachtwoord.' }];\n}\nconst baseUrl = flow.get('listBaseUrl') || 'https://api.zaptec.com';\nmsg.method = 'GET';\nmsg.headers = { 'Authorization': 'Bearer ' + body.access_token };\nmsg.url = baseUrl + '/api/chargers';\ndelete msg.payload;\nreturn [msg, null];\n",
+        "outputs": 2,
         "timeout": "",
         "noerr": 0,
         "initialize": "",
         "finalize": "",
         "libs": [],
         "x": 790,
-        "y": 260,
+        "y": 280,
         "wires": [
             [
                 "d_list"
+            ],
+            [
+                "d_md",
+                "d_notif"
             ]
         ]
     },
@@ -383,10 +394,10 @@
         "proxy": "",
         "insecureHTTPParser": false,
         "authType": "",
-        "senderr": false,
+        "senderr": true,
         "headers": [],
-        "x": 380,
-        "y": 320,
+        "x": 370,
+        "y": 340,
         "wires": [
             [
                 "d_fn_listfmt"
@@ -398,18 +409,21 @@
         "type": "function",
         "z": "f_dash",
         "name": "Lijst -> markdown",
-        "func": "const data = (msg.payload && Array.isArray(msg.payload.Data)) ? msg.payload.Data : [];\nlet md = '### Beschikbare laadpalen\\n\\n';\nif (!data.length) {\n    md += '_Geen laadpalen gevonden voor dit account._';\n} else {\n    md += '| Naam | Id (GUID) | Online |\\n|---|---|---|\\n';\n    for (const c of data) {\n        md += '| ' + (c.Name || '') + ' | `' + (c.Id || '') + '` | ' + (c.IsOnline ? 'ja' : 'nee') + ' |\\n';\n    }\n    md += '\\n_Kopieer de gewenste **Id (GUID)** naar het veld hierboven en klik Opslaan._';\n}\nmsg.payload = md;\nnode.status({ fill: 'green', shape: 'dot', text: data.length + ' laadpaal(en)' });\nreturn msg;\n",
-        "outputs": 1,
+        "func": "// Uitgang 1 = markdown-tabel, uitgang 2 = korte melding.\nconst code = msg.statusCode;\nif (code && code !== 200) {\n    node.status({ fill: 'red', shape: 'dot', text: 'fout ' + code });\n    return [{ payload: '**Fout bij ophalen laadpalen (HTTP ' + code + ').**' }, { payload: 'Fout bij ophalen laadpalen (HTTP ' + code + ').' }];\n}\nconst data = (msg.payload && Array.isArray(msg.payload.Data)) ? msg.payload.Data : [];\nlet md = '### Beschikbare laadpalen\\n\\n';\nif (!data.length) {\n    md += '_Geen laadpalen gevonden voor dit account._';\n} else {\n    md += '| Naam | Id (GUID) | Online |\\n|---|---|---|\\n';\n    for (const c of data) {\n        md += '| ' + (c.Name || '') + ' | `' + (c.Id || '') + '` | ' + (c.IsOnline ? 'ja' : 'nee') + ' |\\n';\n    }\n    md += '\\n_Kopieer de gewenste Id (GUID) naar het veld hierboven en klik Opslaan._';\n}\nnode.status({ fill: 'green', shape: 'dot', text: data.length + ' laadpaal(en)' });\nreturn [{ payload: md }, { payload: data.length + ' laadpaal(en) gevonden.' }];\n",
+        "outputs": 2,
         "timeout": "",
         "noerr": 0,
         "initialize": "",
         "finalize": "",
         "libs": [],
         "x": 590,
-        "y": 320,
+        "y": 340,
         "wires": [
             [
                 "d_md"
+            ],
+            [
+                "d_notif"
             ]
         ]
     },
@@ -425,8 +439,72 @@
         "content": "{{{msg.payload}}}",
         "className": "",
         "x": 790,
-        "y": 320,
+        "y": 340,
         "wires": []
+    },
+    {
+        "id": "d_status_txt",
+        "type": "ui-text",
+        "z": "f_dash",
+        "group": "ui_group",
+        "order": 4,
+        "width": 0,
+        "height": 0,
+        "name": "Status",
+        "label": "Status",
+        "format": "{{msg.payload}}",
+        "layout": "col-center",
+        "style": false,
+        "font": "",
+        "fontSize": 16,
+        "color": "#717171",
+        "wrapText": true,
+        "className": "",
+        "value": "payload",
+        "valueType": "msg",
+        "x": 380,
+        "y": 420,
+        "wires": []
+    },
+    {
+        "id": "d_status_in",
+        "type": "link in",
+        "z": "f_dash",
+        "name": "status in",
+        "links": [
+            "p_status_out"
+        ],
+        "x": 175,
+        "y": 420,
+        "wires": [
+            [
+                "d_status_txt"
+            ]
+        ]
+    },
+    {
+        "id": "d_notif",
+        "type": "ui-notification",
+        "z": "f_dash",
+        "ui": "ui_base",
+        "name": "Melding",
+        "position": "top right",
+        "colorDefault": true,
+        "color": null,
+        "displayTime": "5",
+        "showCountdown": true,
+        "outputs": 1,
+        "allowDismiss": true,
+        "dismissText": "Sluiten",
+        "allowConfirm": false,
+        "confirmText": "OK",
+        "raw": false,
+        "className": "",
+        "x": 1050,
+        "y": 300,
+        "wires": [
+            []
+        ]
     },
     {
         "id": "d_catch",
@@ -436,7 +514,7 @@
         "scope": null,
         "uncaught": false,
         "x": 250,
-        "y": 400,
+        "y": 500,
         "wires": [
             []
         ]
@@ -517,7 +595,7 @@
         "proxy": "",
         "insecureHTTPParser": false,
         "authType": "",
-        "senderr": false,
+        "senderr": true,
         "headers": [],
         "x": 540,
         "y": 100,
@@ -532,7 +610,7 @@
         "type": "function",
         "z": "f_poll",
         "name": "2. Token opslaan",
-        "func": "const body = msg.payload || {};\nif (!body.access_token) {\n    node.status({ fill: 'red', shape: 'dot', text: 'auth mislukt' });\n    node.error('Zaptec: geen access_token. Controleer inloggegevens in VRM.', msg);\n    return null;\n}\nglobal.set('zaptecToken', body.access_token);\nglobal.set('zaptecTokenExpiry', Date.now() + ((Number(body.expires_in) || 3600) * 1000));\nmsg.access_token = body.access_token;\nnode.status({ fill: 'green', shape: 'dot', text: 'token vernieuwd' });\nreturn msg;\n",
+        "func": "const body = (msg.payload && typeof msg.payload === 'object') ? msg.payload : {};\nif (!body.access_token) {\n    const code = msg.statusCode || '?';\n    node.status({ fill: 'red', shape: 'dot', text: 'auth mislukt (' + code + ')' });\n    node.error('Zaptec: inloggen mislukt (HTTP ' + code + '). Controleer inloggegevens in VRM.', msg);\n    return null;\n}\nglobal.set('zaptecToken', body.access_token);\nglobal.set('zaptecTokenExpiry', Date.now() + ((Number(body.expires_in) || 3600) * 1000));\nmsg.access_token = body.access_token;\nnode.status({ fill: 'green', shape: 'dot', text: 'token vernieuwd' });\nreturn msg;\n",
         "outputs": 1,
         "timeout": "",
         "noerr": 0,
@@ -608,7 +686,8 @@
         "wires": [
             [
                 "p_meter",
-                "p_dbg"
+                "p_dbg",
+                "p_fn_status"
             ]
         ]
     },
@@ -623,7 +702,7 @@
         "default_values": true,
         "outputs": 1,
         "x": 1360,
-        "y": 200,
+        "y": 180,
         "wires": [
             []
         ]
@@ -641,8 +720,41 @@
         "targetType": "msg",
         "statusVal": "",
         "statusType": "auto",
-        "x": 1090,
-        "y": 280,
+        "x": 1360,
+        "y": 240,
+        "wires": []
+    },
+    {
+        "id": "p_fn_status",
+        "type": "function",
+        "z": "f_poll",
+        "name": "Status -> dashboard",
+        "func": "// Bouwt een statusregel voor het VRM-dashboard.\nconst p = msg.payload || {};\nconst w = p['Ac/Power'];\nconst kwh = p['Ac/Energy/Forward'];\nconst on = p.Connected ? 'online' : 'offline';\nconst t = new Date().toLocaleTimeString('nl-NL');\nmsg.payload = 'Laatste uitlezing: ' + (w != null ? w : '?') + ' W, ' + (kwh != null ? kwh : '?') + ' kWh (' + on + ') @ ' + t;\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1080,
+        "y": 300,
+        "wires": [
+            [
+                "p_status_out"
+            ]
+        ]
+    },
+    {
+        "id": "p_status_out",
+        "type": "link out",
+        "z": "f_poll",
+        "name": "status",
+        "mode": "link",
+        "links": [
+            "d_status_in"
+        ],
+        "x": 1290,
+        "y": 300,
         "wires": []
     },
     {
@@ -653,10 +765,11 @@
         "scope": null,
         "uncaught": false,
         "x": 130,
-        "y": 320,
+        "y": 380,
         "wires": [
             [
-                "p_errdbg"
+                "p_errdbg",
+                "p_fn_errstatus"
             ]
         ]
     },
@@ -673,8 +786,28 @@
         "targetType": "msg",
         "statusVal": "error.message",
         "statusType": "auto",
-        "x": 310,
-        "y": 320,
+        "x": 330,
+        "y": 360,
         "wires": []
+    },
+    {
+        "id": "p_fn_errstatus",
+        "type": "function",
+        "z": "f_poll",
+        "name": "Fout -> dashboard",
+        "func": "const e = (msg.error && msg.error.message) ? msg.error.message : 'onbekende fout';\nmsg.payload = 'Fout: ' + e + ' @ ' + new Date().toLocaleTimeString('nl-NL');\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 340,
+        "y": 420,
+        "wires": [
+            [
+                "p_status_out"
+            ]
+        ]
     }
 ]

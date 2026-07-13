@@ -262,14 +262,21 @@ laadpaal of installatie gewijzigd.
 
 | Symptoom                              | Oorzaak / oplossing                                                        |
 |---------------------------------------|---------------------------------------------------------------------------|
-| Node-status `auth mislukt`            | Verkeerde gebruikersnaam/wachtwoord (VRM-formulier of env-variabele).      |
+| `auth mislukt (400)` / `inloggen mislukt (HTTP 400)` | Verkeerde gebruikersnaam/wachtwoord, **of** dit Zaptec-account heeft geen API-toegang/owner-rechten. Test dezelfde inloggegevens op <https://portal.zaptec.com>. |
+| `auth mislukt (401/403)`              | Account bestaat maar mag deze installatie/charger niet uitlezen (owner-rol nodig). |
 | Status `wacht op VRM-configuratie`    | Nog niets ingevuld; vul het VRM-formulier in of zet de env-variabelen.     |
 | `charger-id ontbreekt`                | Charger Id (GUID) niet ingevuld; zoek hem via **"Toon mijn laadpalen"**.   |
 | `geen state ontvangen`                | Charger offline, of account heeft geen owner-rechten op de installatie.    |
 | Dashboard-tegel/formulier ontbreekt   | `@flowfuse/node-red-dashboard` niet geïnstalleerd, of flow niet gedeployed.|
 | "Unknown node" bij importeren         | Installeer eerst `@flowfuse/node-red-dashboard` via *Manage Palette*.      |
+| Meldingen `Cannot save user settings: Settings not available` / `Property 'telemetryEnabled'…` | **Onschuldig.** Dit zijn bekende Node-RED/Venus OS-meldingen van Dashboard 2.0 rond runtime-settings/telemetry; ze blokkeren de werking niet en mogen genegeerd worden. |
 | Meter verschijnt niet in de GX        | `node-red-contrib-victron` te oud, of device-type/rol niet ondersteund.    |
 | Energie loopt niet op                 | Configureer een persistent context store of vertrouw op OCMF (obs. 554).   |
+
+**Feedback in VRM:** het dashboard toont nu een **melding (toast)** bij opslaan en bij
+fouten, en een **Status-regel** met de laatste uitlezing of foutmelding. Zie je daar
+`inloggen mislukt (HTTP 400)`, dan ligt het aan de inloggegevens/rechten van het
+Zaptec-account, niet aan de flow.
 
 Zet in de node **meter payload** (debug) op *actief* om de exacte payload naar de
 virtuele meter te inspecteren.
