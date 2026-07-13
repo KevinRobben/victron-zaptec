@@ -492,7 +492,7 @@
         "type": "function",
         "z": "f_dash",
         "name": "Laadpalen -> dropdown",
-        "func": "// Vult de laadpaal-dropdown en kiest automatisch de actieve laadpaal.\n// Uitgang 1 = dropdown (opties + selectie), uitgang 2 = melding, uitgang 3 = bestand.\nconst code = msg.statusCode;\nif (code && code !== 200) {\n    node.status({ fill: 'red', shape: 'dot', text: 'fout ' + code });\n    return [null, { payload: 'Fout bij ophalen laadpalen (HTTP ' + code + ').' }, null];\n}\nconst data = (msg.payload && Array.isArray(msg.payload.Data)) ? msg.payload.Data : [];\nconst options = data.map(function (c) {\n    return { value: c.Id, label: (c.Name || '(naamloos)') + (c.IsOnline ? '' : ' - offline') };\n});\nconst names = {};\ndata.forEach(function (c) { names[c.Id] = c.Name || c.Id; });\nglobal.set('zaptecChargerNames', names);\n\nconst cfg = global.get('zaptecCfg') || {};\nconst ids = data.map(function (c) { return c.Id; });\nlet selected = cfg.chargerId;\nif (!selected || ids.indexOf(selected) === -1) {\n    selected = data.length ? data[0].Id : '';\n}\ncfg.chargerId = selected;\nglobal.set('zaptecCfg', cfg);\n\nnode.status({ fill: 'green', shape: 'dot', text: data.length + ' laadpaal(en)' });\nif (!data.length) {\n    return [\n        { options: [{ value: '', label: '(geen laadpalen gevonden)' }], payload: '' },\n        { payload: 'Geen laadpalen gevonden voor dit account.' },\n        null\n    ];\n}\nreturn [\n    { options: options, payload: selected },\n    { payload: data.length + ' laadpaal(en) gevonden. Actief: ' + (names[selected] || selected) },\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" }\n];\n",
+        "func": "// Vult de laadpaal-dropdown en kiest automatisch de actieve laadpaal.\n// Uitgang 1 = dropdown (opties + selectie), uitgang 2 = melding, uitgang 3 = bestand.\nconst code = msg.statusCode;\nif (code && code !== 200) {\n    node.status({ fill: 'red', shape: 'dot', text: 'fout ' + code });\n    return [null, { payload: 'Fout bij ophalen laadpalen (HTTP ' + code + ').' }, null];\n}\nconst data = (msg.payload && Array.isArray(msg.payload.Data)) ? msg.payload.Data : [];\nconst options = data.map(function (c) {\n    return { value: c.Id, label: (c.Name || '(naamloos)') + (c.IsOnline ? '' : ' - offline') };\n});\nconst names = {};\ndata.forEach(function (c) { names[c.Id] = c.Name || c.Id; });\nglobal.set('zaptecChargerNames', names);\nglobal.set('zaptecChargerOptions', options);\n\nconst cfg = global.get('zaptecCfg') || {};\nconst ids = data.map(function (c) { return c.Id; });\nlet selected = cfg.chargerId;\nif (!selected || ids.indexOf(selected) === -1) {\n    selected = data.length ? data[0].Id : '';\n}\ncfg.chargerId = selected;\nglobal.set('zaptecCfg', cfg);\n\nnode.status({ fill: 'green', shape: 'dot', text: data.length + ' laadpaal(en)' });\nif (!data.length) {\n    return [\n        { options: [{ value: '', label: '(geen laadpalen gevonden)' }], payload: '' },\n        { payload: 'Geen laadpalen gevonden voor dit account.' },\n        null\n    ];\n}\nreturn [\n    { options: options, payload: selected },\n    { payload: data.length + ' laadpaal(en) gevonden. Actief: ' + (names[selected] || selected) },\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" }\n];\n",
         "outputs": 3,
         "timeout": "",
         "noerr": 0,
@@ -578,6 +578,49 @@
         ]
     },
     {
+        "id": "d_pageview",
+        "type": "ui-event",
+        "z": "f_dash",
+        "ui": "ui_base",
+        "name": "Pagina geopend",
+        "x": 150,
+        "y": 640,
+        "wires": [
+            [
+                "d_fn_populate"
+            ]
+        ]
+    },
+    {
+        "id": "d_fn_populate",
+        "type": "function",
+        "z": "f_dash",
+        "name": "UI vullen",
+        "func": "// Vult de UI wanneer de pagina wordt geopend (niet alleen bij deploy).\n// Uitgang 1 = gebruikersnaam in formulier, 2 = positie, 3 = laadpaal-dropdown (uit cache),\n// 4 = laadpalen ophalen als er nog geen cache is.\nconst cfg = global.get('zaptecCfg') || {};\nconst userMsg = cfg.username ? { payload: { username: cfg.username } } : null;\nconst posVal = (cfg.position !== undefined && cfg.position !== null && cfg.position !== '')\n    ? parseInt(cfg.position, 10) : 1;\nconst posMsg = { payload: posVal };\nconst opts = global.get('zaptecChargerOptions');\nlet chargerMsg = null;\nlet fetchMsg = null;\nif (opts && opts.length) {\n    chargerMsg = { options: opts, payload: cfg.chargerId || opts[0].value };\n} else if (cfg.username && cfg.password) {\n    fetchMsg = {};\n}\nreturn [userMsg, posMsg, chargerMsg, fetchMsg];\n",
+        "outputs": 4,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 360,
+        "y": 640,
+        "wires": [
+            [
+                "d_form"
+            ],
+            [
+                "d_pos"
+            ],
+            [
+                "d_charger"
+            ],
+            [
+                "d_fn_listauth"
+            ]
+        ]
+    },
+    {
         "id": "d_catch",
         "type": "catch",
         "z": "f_dash",
@@ -585,7 +628,7 @@
         "scope": null,
         "uncaught": false,
         "x": 250,
-        "y": 500,
+        "y": 700,
         "wires": [
             []
         ]

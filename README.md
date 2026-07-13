@@ -176,9 +176,12 @@ Waarom dit handig is voor jullie als installateur:
    een melding (toast). Alles wordt bewaard in `/data/zaptec-config.json` (blijft
    behouden na herstart).
 
-> De **gebruikersnaam** wordt bij het openen automatisch ingevuld met de opgeslagen
-> waarde; het **wachtwoord** blijft bewust leeg. Ziet je browser toch een wachtwoord
-> ingevuld staan, dan komt dat van de autofill-/wachtwoordmanager van de browser.
+> Bij het **openen van de dashboard-pagina** worden de opgeslagen waarden hersteld:
+> de **gebruikersnaam** wordt voorinvuld, de **laadpaal-dropdown** en de
+> **positie** worden gevuld met de opgeslagen keuze. Het **wachtwoord** blijft
+> bewust leeg. Ziet je browser toch een gebruikersnaam/wachtwoord (bijv. `admin`)
+> ingevuld staan, dan komt dat van de autofill-/wachtwoordmanager van de browser —
+> onze prefill zet de juiste gebruikersnaam bij het openen.
 >
 > Na een herstart worden de laadpalen automatisch opnieuw opgehaald (zolang de
 > inloggegevens bekend zijn), zodat de dropdown de actieve laadpaal blijft tonen.
