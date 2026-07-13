@@ -41,78 +41,45 @@ laadpaal.
    deze onder de service `com.victronenergy.evcharger.*`, waardoor de laadpaal in
    de GX-GUI en VRM als EV-lader verschijnt.
 
-## Twee weergaven: energiemeter vs. volledige EV-charger
+## Wat de virtuele energiemeter (rol EV charger) wél en niet toont
 
-Belangrijk om te begrijpen: een **energiemeter met rol EV charger** is in Venus OS
-een *meet*-apparaat. Het publiceert alleen meterwaarden:
+> **Belangrijk – gedrag in Venus OS 3.80**
+>
+> Een **virtuele energiemeter met rol EV charger** is in Venus OS een *meet*-apparaat.
+> In de EVCS-widget en op de apparaatpagina toont Venus OS hiervan **alleen het
+> actuele vermogen (`Ac/Power`) en de totale energie (`Ac/Energy/Forward`)**.
+>
+> De overige waarden die dit flow meestuurt — **per-fase spanning/stroom/vermogen**
+> en een eventuele **sessie-interface (laadstroom, sessie-energie, laadtijd,
+> status)** — worden door Venus OS 3.80 (nog) **niet** op de EVCS-pagina getoond.
+> Dit is bevestigd door Victron-gebruikers (o.a. ook met een fysieke EM24 die een
+> EVCS meet: *"you only see the power"*) en lijkt nog in ontwikkeling bij Victron.
+> Zie de community-thread
+> [V3.80~14 virtual EV behaviour](https://community.victronenergy.com/t/v3-80-14-virtual-ev-behaviour/56398).
+>
+> **Conclusie:** de lege velden voor laadstroom/sessie/tijd zijn *geen fout in dit
+> flow* — de data wordt correct naar de D-Bus-meter geschreven (zichtbaar in de
+> Node-RED debug), maar Venus OS surfacet ze niet voor dit apparaattype. Er is geen
+> volledig virtueel *EV-charger*-apparaattype in `node-red-contrib-victron`, en
+> zonder SSH is een externe driver geen optie. Deze integratie levert daarom een
+> betrouwbare **vermogens- en energiemeting** van de laadpaal; verschijnt er in een
+> latere Venus OS-versie meer detail voor de EVCS-rol, dan komt dat automatisch mee
+> omdat de waarden al worden meegestuurd.
 
-- `Ac/Power`, `Ac/Energy/Forward`
-- `Ac/L1..L3/Voltage`, `Ac/L1..L3/Current`, `Ac/L1..L3/Power` (zichtbaar op de
-  eigen apparaatpagina van de meter)
-
-Het levert **niet** de EV-charger *sessie-interface* (`/Current`, `/ChargingTime`,
-`/Session/Time`, `/Session/Energy`, `/Status`). Daarom blijven op de
-EV-charger-pagina de velden **laadstroom, sessie-energie en laadtijd leeg** — die
-horen bij een echte laadpaal, niet bij een meter. Ook toont de EV-charger-pagina
-per fase alleen *vermogen*, niet stroom (die staat wel op de meterpagina zelf).
-
-Er zijn dus twee opties:
-
-| Wil je...                                            | Gebruik                                  |
-|------------------------------------------------------|------------------------------------------|
-| Alleen verbruik meten (vermogen + energie)           | **Energiemeter** (rol EV charger) — standaard in dit flow |
-| Volledige EV-charger (laadstroom, sessie, tijd, status) | **dbus-mqtt-ev-charger driver** — zie hieronder |
-
-### Optie 2: volledige EV-charger via de `dbus-mqtt-ev-charger` driver
-
-`node-red-contrib-victron` kan zelf geen volledig EV-charger-D-Bus-object maken.
-Daarvoor gebruik je de community-driver
-[`mr-manuel/venus-os_dbus-mqtt-ev-charger`](https://github.com/mr-manuel/venus-os_dbus-mqtt-ev-charger),
-die op basis van MQTT een echte `com.victronenergy.evcharger` service publiceert
-(met laadstroom, sessie-energie, sessie-tijd en status).
-
-In dit flow is daarvoor de tak **`5. Zaptec -> EV charger (MQTT driver)`** →
-**`Venus OS broker`** (MQTT) al aanwezig. Zo activeer je hem:
-
-1. Installeer de driver op de GX (SSH):
-
-   ```bash
-   wget -O /tmp/download_dbus-mqtt-ev-charger.sh https://raw.githubusercontent.com/mr-manuel/venus-os_dbus-mqtt-ev-charger/master/download.sh
-   bash /tmp/download_dbus-mqtt-ev-charger.sh
-   ```
-
-2. Zet in `/data/etc/dbus-mqtt-ev-charger/config.ini`:
-   - `broker_address = 127.0.0.1`
-   - `topic = custom/ev-charger` (of je eigen topic; zet dan ook
-     `ZAPTEC_EVCHARGER_TOPIC` gelijk in Node-RED)
-
-   en installeer de service met `bash /data/etc/dbus-mqtt-ev-charger/install.sh`.
-
-3. In Node-RED wijst de node **Venus OS broker** naar `127.0.0.1:1883` (de
-   ingebouwde broker van Venus OS Large). Deploy.
-
-4. **Voorkom dubbele apparaten:** gebruik je Optie 2, verwijder of deactiveer dan
-   de node **`Laadpaal-meter (Victron)`** (de energiemeter), anders verschijnt de
-   laadpaal twee keer.
-
-De Node-RED-tak vult de driver met o.a.: `Ac/Power`, `Ac/L1..L3/Power`,
-`Ac/Energy/Forward`, `Current` (hoogste fasestroom), `Status` (uit
-ChargerOperationMode), `Session/Energy` (obs. 553) en `Session/Time`
-(bijgehouden vanaf start laden).
+> **Let op – "Virtual EV" is iets anders.** In Node-RED bestaat ook een *Virtual EV*
+> (device-type `ev`, service `com.victronenergy.ev`). Dat is een **elektrische auto**
+> (SoC, TargetSoc, ChargingState, kilometerstand, locatie…), **niet** een laadpaal.
+> Gebruik die node dus niet voor een Zaptec-laadpaal.
 
 ### Gebruikte Zaptec observatie-ID's
 
-| ID   | Naam                    | Gebruik in Victron            |
-|------|-------------------------|-------------------------------|
-| -2   | IsOnline                | `Connected`                   |
-| 501/502/503 | VoltagePhase1/2/3 | `Ac/L{1,2,3}/Voltage` (V)     |
-| 507/508/509 | CurrentPhase1/2/3 | `Ac/L{1,2,3}/Current` (A)     |
-| 513  | TotalChargePower        | `Ac/Power` (W)                |
-| 553  | TotalChargePowerSession | `Session/Energy` (kWh, Optie 2) |
-| 554  | SignedMeterValue (OCMF) | `Ac/Energy/Forward` (kWh)     |
-| 708  | ChargeCurrentSet        | `SetCurrent`/`MaxCurrent` (A, Optie 2) |
-| 710  | ChargerOperationMode    | `Status` (Optie 2)            |
-| 721  | SessionIdentifier       | sessie-detectie voor `Session/Time` |
+| ID   | Naam                    | Victron D-Bus-pad             | Getoond in Venus OS 3.80 |
+|------|-------------------------|-------------------------------|--------------------------|
+| -2   | IsOnline                | `Connected`                   | –                        |
+| 501/502/503 | VoltagePhase1/2/3 | `Ac/L{1,2,3}/Voltage` (V)     | nee (nog niet)           |
+| 507/508/509 | CurrentPhase1/2/3 | `Ac/L{1,2,3}/Current` (A)     | nee (nog niet)           |
+| 513  | TotalChargePower        | `Ac/Power` (W)                | **ja**                   |
+| 554  | SignedMeterValue (OCMF) | `Ac/Energy/Forward` (kWh)     | **ja**                   |
 
 Per-fase vermogen wordt berekend als `V × I`. De totale energie
 (`Ac/Energy/Forward`) komt bij voorkeur uit de gesigneerde OCMF-meterstand
@@ -126,12 +93,14 @@ De volledige lijst met observatie-ID's staat in
 
 ## Vereisten
 
-- Een **Victron GX-toestel met Venus OS Large** (Node-RED en het Mosquitto-broker
-  zitten daarin). Zie de Victron-handleiding *Venus OS Large: Signal K en Node-RED*.
+- Een **Victron GX-toestel met Venus OS Large**, bij voorkeur **v3.80 of nieuwer**
+  (Node-RED zit daarin). Zie de Victron-handleiding *Venus OS Large: Signal K en
+  Node-RED*.
 - De node-set **`node-red-contrib-victron`** (standaard aanwezig in Venus OS Large).
-  Zorg dat de versie de **Virtual Device**-node met device-type *Energy meter* en
-  rol *EV charger* bevat (recente versies). Zo nodig bijwerken via het Node-RED
-  palette.
+  De **Virtual Device**-node met device-type *Energy meter* en rol *EV charger*
+  moet beschikbaar zijn (aanwezig in de node-versie die met Venus OS 3.80 meekomt).
+  Er is **geen SSH-toegang en geen externe driver** nodig; alles draait binnen
+  Node-RED.
 - **Internettoegang** vanaf de GX naar `api.zaptec.com` (HTTPS).
 - Een **Zaptec account met owner-rechten** op de betreffende installatie(s)
   (nodig om charger-state uit te lezen).
@@ -171,7 +140,6 @@ Zet op de GX de volgende variabelen (bijv. via de Node-RED `settings.js` onder
 | `ZAPTEC_CHARGER_ID`  | ja        | –                         | GUID (`Id`) van de laadpaal          |
 | `ZAPTEC_BASE_URL`    | nee       | `https://api.zaptec.com`  | API-basis-URL                        |
 | `ZAPTEC_METER_POSITION` | nee    | `1` (AC-in 1)             | Positie in het systeem: `0` = AC-uit, `1` = AC-in 1, `2` = AC-in 2 |
-| `ZAPTEC_EVCHARGER_TOPIC` | nee   | `custom/ev-charger`       | MQTT-topic voor de `dbus-mqtt-ev-charger` driver (alleen Optie 2) |
 
 ### Optie B – Rechtstreeks in de flow
 
@@ -245,7 +213,11 @@ laadpaal of installatie gewijzigd.
   `ZAPTEC_METER_POSITION` op respectievelijk `0` of `2` (of pas de `Position`-waarde
   aan in de functie *4. Zaptec -> Victron energiemeter*). Let op: `PositionIsAdjustable`
   van deze virtuele meter staat op `0`, dus de positie is **niet** via de GX-GUI te
-  wijzigen — dit gebeurt uitsluitend via de flow.
+  wijzigen — dit gebeurt uitsluitend via de flow. In Venus OS 3.80 kan het
+  voorkomen dat de EVCS-widget de positie niet zichtbaar bijwerkt (bekend gedrag).
+- **Alleen vermogen + energie zichtbaar**: zie de sectie *"Wat de virtuele
+  energiemeter (rol EV charger) wél en niet toont"*. Sessie/laadstroom/laadtijd en
+  per-fase-waarden worden door Venus OS 3.80 niet op de EVCS-pagina getoond.
 - **Aantal fasen**: de virtuele meter staat op 3 fasen. Bij een 1-fase laadpaal
   blijven L2/L3 op 0. Desgewenst kun je in de `victron-virtual` node het aantal
   fasen op 1 zetten.
