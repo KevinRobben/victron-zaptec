@@ -158,8 +158,9 @@ Waarom dit handig is voor jullie als installateur:
 2. Open in VRM onder **Venus OS Large** de **dashboard-tegel**.
 3. Vul **gebruikersnaam en wachtwoord** in (de charger Id mag je nog leeg laten) en
    klik **Opslaan**.
-4. Klik op **"Toon mijn laadpalen"**. De laadpalen van het account verschijnen
-   (naam + Id). Kopieer de juiste **Id (GUID)**.
+4. Klik op **"Toon mijn laadpalen"**. De laadpalen van het account verschijnen in
+   een **doorzoekbare tabel** (naam + Id + online). Gebruik de zoekbalk (handig bij
+   veel laadpalen) en kopieer de juiste **Id (GUID)**.
 5. Plak de **Id (GUID)** in het veld en klik nogmaals **Opslaan**.
 6. Kies bij **"Positie van de laadpaal"** waar de lader in het systeem zit:
    **AC-in** of **AC-uit**. De keuze wordt direct opgeslagen en toegepast.
@@ -199,8 +200,10 @@ VRM-waarden hebben voorrang; ontbreken ze, dan gebruikt de flow deze variabelen:
 ### Charger-GUID opzoeken
 
 De charger Id is de **GUID** (`Id`) van de laadpaal, niet de zichtbare naam of het
-serienummer. Klik in de VRM dashboard-tegel op **"Toon mijn laadpalen"**: je ziet
-per laadpaal de naam, de **Id (GUID)** en of hij online is. Kopieer de juiste `Id`.
+serienummer. Klik in de VRM dashboard-tegel op **"Toon mijn laadpalen"**: je krijgt
+een **doorzoekbare tabel** met per laadpaal de naam, de **Id (GUID)** en of hij
+online is. Bij een installateursaccount met veel laadpalen kun je met de zoekbalk
+snel de juiste vinden. Kopieer de juiste `Id`.
 
 ### Poll-interval
 

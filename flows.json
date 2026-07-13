@@ -391,7 +391,6 @@
                 "d_tok"
             ],
             [
-                "d_md",
                 "d_notif"
             ]
         ]
@@ -439,7 +438,6 @@
                 "d_list"
             ],
             [
-                "d_md",
                 "d_notif"
             ]
         ]
@@ -472,8 +470,8 @@
         "id": "d_fn_listfmt",
         "type": "function",
         "z": "f_dash",
-        "name": "Lijst -> markdown",
-        "func": "// Uitgang 1 = markdown-tabel, uitgang 2 = korte melding.\nconst code = msg.statusCode;\nif (code && code !== 200) {\n    node.status({ fill: 'red', shape: 'dot', text: 'fout ' + code });\n    return [{ payload: '**Fout bij ophalen laadpalen (HTTP ' + code + ').**' }, { payload: 'Fout bij ophalen laadpalen (HTTP ' + code + ').' }];\n}\nconst data = (msg.payload && Array.isArray(msg.payload.Data)) ? msg.payload.Data : [];\nlet md = '### Beschikbare laadpalen\\n\\n';\nif (!data.length) {\n    md += '_Geen laadpalen gevonden voor dit account._';\n} else {\n    md += '| Naam | Id (GUID) | Online |\\n|---|---|---|\\n';\n    for (const c of data) {\n        md += '| ' + (c.Name || '') + ' | `' + (c.Id || '') + '` | ' + (c.IsOnline ? 'ja' : 'nee') + ' |\\n';\n    }\n    md += '\\n_Kopieer de gewenste Id (GUID) naar het veld hierboven en klik Opslaan._';\n}\nnode.status({ fill: 'green', shape: 'dot', text: data.length + ' laadpaal(en)' });\nreturn [{ payload: md }, { payload: data.length + ' laadpaal(en) gevonden.' }];\n",
+        "name": "Lijst -> tabel",
+        "func": "// Uitgang 1 = tabelrijen (array), uitgang 2 = korte melding.\nconst code = msg.statusCode;\nif (code && code !== 200) {\n    node.status({ fill: 'red', shape: 'dot', text: 'fout ' + code });\n    return [{ payload: [] }, { payload: 'Fout bij ophalen laadpalen (HTTP ' + code + ').' }];\n}\nconst data = (msg.payload && Array.isArray(msg.payload.Data)) ? msg.payload.Data : [];\nconst rows = data.map(function (c) {\n    return { Naam: c.Name || '', 'Id (GUID)': c.Id || '', Online: c.IsOnline ? 'ja' : 'nee' };\n});\nnode.status({ fill: 'green', shape: 'dot', text: rows.length + ' laadpaal(en)' });\nreturn [\n    { payload: rows },\n    { payload: rows.length + ' laadpaal(en) gevonden. Gebruik de zoekbalk en kopieer de Id (GUID).' }\n];\n",
         "outputs": 2,
         "timeout": "",
         "noerr": 0,
@@ -484,7 +482,7 @@
         "y": 400,
         "wires": [
             [
-                "d_md"
+                "d_table"
             ],
             [
                 "d_notif"
@@ -492,19 +490,31 @@
         ]
     },
     {
-        "id": "d_md",
-        "type": "ui-markdown",
+        "id": "d_table",
+        "type": "ui-table",
         "z": "f_dash",
         "group": "ui_group",
         "name": "Laadpalen",
+        "label": "Mijn laadpalen",
         "order": 4,
         "width": 0,
         "height": 0,
-        "content": "{{{msg.payload}}}",
+        "maxrows": 0,
+        "passthru": false,
+        "autocols": true,
+        "showSearch": true,
+        "deselect": true,
+        "selectionType": "none",
+        "columns": null,
+        "mobileBreakpoint": "sm",
+        "mobileBreakpointType": "defaults",
+        "action": "replace",
         "className": "",
         "x": 790,
         "y": 400,
-        "wires": []
+        "wires": [
+            []
+        ]
     },
     {
         "id": "d_status_txt",
