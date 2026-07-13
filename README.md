@@ -31,9 +31,14 @@ laadpaal.
 1. **Authenticatie** – OAuth2 *password grant* (ROPC) tegen
    `https://api.zaptec.com/oauth/token`. Het token wordt gecachet en pas
    vernieuwd als het (bijna) verloopt.
-2. **Uitlezen** – periodiek (standaard elke 30 s) wordt
-   `GET /api/chargers/{id}/state` opgehaald. Dit geeft een lijst van
-   *state-observaties*.
+2. **Uitlezen (adaptief)** – `GET /api/chargers/{id}/state` wordt opgehaald met een
+   *variabel* interval in plaats van constant pollen:
+   - **live meekijken** (VRM-app/GX-display open): snel, standaard **5 s**;
+   - **aan het laden** (geen kijker): standaard **15 s**;
+   - **idle** (niet laden, geen kijker): traag, standaard **120 s** — de meter
+     staat dan gewoon op 0 W.
+
+   Zie *Slim pollen* hieronder.
 3. **Omzetten** – de relevante observaties worden vertaald naar Victron
    D-Bus-paden.
 4. **Presenteren** – de `victron-virtual` node (uit `node-red-contrib-victron`)
@@ -103,6 +108,9 @@ De volledige lijst met observatie-ID's staat in
   Node-RED.
 - De palette **`@flowfuse/node-red-dashboard`** (Dashboard 2.0) voor de
   VRM-invulvelden. Te installeren via *Manage Palette* in de Node-RED editor.
+- Optioneel (voor de live-kijk detectie): **MQTT op LAN (plaintext)** ingeschakeld op
+  de GX (*Instellingen → Services*). Zonder dit werkt alles door, maar valt het
+  pollen terug op het laad-/idle-interval.
 - **Internettoegang** vanaf de GX naar `api.zaptec.com` (HTTPS).
 - Een **Zaptec account met owner-rechten** op de betreffende installatie(s)
   (nodig om charger-state uit te lezen).
@@ -168,9 +176,9 @@ Waarom dit handig is voor jullie als installateur:
    een melding (toast). Alles wordt bewaard in `/data/zaptec-config.json` (blijft
    behouden na herstart).
 
-> De inlogvelden zijn **standaard leeg** (worden niet automatisch voorinvuld). Ziet
-> je browser toch iets ingevuld staan (bijv. `admin`), dan komt dat van de
-> wachtwoord-/autofill-functie van de browser — overschrijf of wis dat gewoon.
+> De **gebruikersnaam** wordt bij het openen automatisch ingevuld met de opgeslagen
+> waarde; het **wachtwoord** blijft bewust leeg. Ziet je browser toch een wachtwoord
+> ingevuld staan, dan komt dat van de autofill-/wachtwoordmanager van de browser.
 >
 > Na een herstart worden de laadpalen automatisch opnieuw opgehaald (zolang de
 > inloggegevens bekend zijn), zodat de dropdown de actieve laadpaal blijft tonen.
@@ -196,6 +204,10 @@ VRM-waarden hebben voorrang; ontbreken ze, dan gebruikt de flow deze variabelen:
 | `ZAPTEC_CHARGER_ID`  | ja        | –                         | GUID (`Id`) van de laadpaal          |
 | `ZAPTEC_BASE_URL`    | nee       | `https://api.zaptec.com`  | API-basis-URL                        |
 | `ZAPTEC_METER_POSITION` | nee    | `1` (AC-in)               | Positie in het systeem: `1` = AC-in, `0` = AC-uit |
+| `ZAPTEC_POLL_WATCHING_SEC` | nee | `5`                       | Poll-interval terwijl iemand live meekijkt |
+| `ZAPTEC_POLL_CHARGING_SEC` | nee | `15`                      | Poll-interval tijdens laden (geen kijker) |
+| `ZAPTEC_POLL_IDLE_SEC` | nee     | `120`                     | Poll-interval bij idle (geen kijker) |
+| `ZAPTEC_WATCH_TIMEOUT_SEC` | nee | `90`                      | Hoelang na de laatste MQTT-activiteit "iemand kijkt" blijft gelden |
 
 ### Laadpaal kiezen
 
@@ -204,12 +216,51 @@ worden alle aan het account gekoppelde laadpalen opgehaald en getoond in de drop
 **"Gekoppelde laadpaal"** (op naam). De eerste wordt automatisch gekozen; selecteer
 desgewenst een andere. De keuze wordt direct opgeslagen en gebruikt.
 
-### Poll-interval
+### Slim pollen (adaptief + live-kijk detectie)
 
-Standaard elke 30 seconden. Aan te passen in de inject-node **Poll** (tab
-*Zaptec -> Victron (uitlezen)*). Houd rekening met de Zaptec *API usage guidelines*
-en poll niet onnodig vaak. Voor near-realtime data zonder polling biedt Zaptec ook
-Service Bus-subscripties aan (buiten scope van dit flow).
+In plaats van constant elke 30 s te pollen, past de flow het interval automatisch
+aan. Een vaste basistik (5 s) op de tab *Zaptec -> Victron (uitlezen)* laat een
+**planner** bepalen of er echt opgehaald wordt:
+
+| Situatie | Interval (instelbaar) | Env-variabele |
+|---|---|---|
+| Er kijkt iemand live mee | 5 s | `ZAPTEC_POLL_WATCHING_SEC` |
+| Aan het laden (geen kijker) | 15 s | `ZAPTEC_POLL_CHARGING_SEC` |
+| Idle (niet laden, geen kijker) | 120 s | `ZAPTEC_POLL_IDLE_SEC` |
+| "Kijker aanwezig" vervaltijd | 90 s | `ZAPTEC_WATCH_TIMEOUT_SEC` |
+
+**Live-kijk detectie zonder extra API-calls.** De flow luistert *passief* mee op de
+lokale Venus MQTT-broker (`N/+/system/0/#`). De Venus-broker stuurt alleen live
+data zolang een client (de **VRM-app**, het **GX-display** of een lokale app) hem
+"wakker" houdt via keepalives. Onze flow stuurt **zelf geen keepalive**, dus we
+ontvangen alleen berichten wanneer er daadwerkelijk iemand live meekijkt. Zodra dat
+zo is, schakelt de planner over op snel pollen (5 s); daarna weer terug.
+
+> **Vereist voor de live-kijk detectie:** *MQTT op LAN (plaintext)* moet aan staan op
+> de GX: **Instellingen → Services → MQTT op LAN (plaintext)**. Staat dit uit, dan
+> werkt de rest gewoon door; de flow valt dan terug op het laad-/idle-interval.
+>
+> **Let op:** heeft je GX een fysiek aangesloten display (bijv. GX Touch), dan houdt
+> dat display de broker mogelijk continu wakker, waardoor "live kijken" vrijwel
+> altijd als actief wordt gezien. Op een Cerbo zonder display werkt de detectie het
+> zuiverst.
+
+Zo krijg je hoge resolutie precies wanneer het nuttig is (iemand kijkt of er wordt
+geladen) en minimaliseer je API-verkeer als er niets te zien is — in lijn met de
+Zaptec *API usage guidelines* (vermijd agressief pollen; max. 10 requests/s per
+account).
+
+### Nog verder: echte push via Zaptec Service Bus (geavanceerd)
+
+Zaptec raadt voor realtime-data **Service Bus (AMQP)** aan in plaats van pollen: de
+laadpaal *pusht* dan state-observaties. Dit is de meest efficiënte optie, maar
+vergt: per installatie een *message subscription* aanzetten, verbindingsgegevens via
+de API ophalen (`/api/userGroups/{id}/messagingConnectionDetails`), en een AMQP
+1.0-client in Node-RED. Subscripties worden na 14 dagen inactiviteit uitgeschakeld
+en per installatie kunnen max. 2 subscripties tegelijk meelezen. Voor een
+installateur met veel locaties is dit zwaarder in beheer; daarom gebruikt dit flow
+standaard het adaptieve pollen hierboven. De Service Bus-aanpak is een mogelijke
+uitbreiding.
 
 ---
 

@@ -162,8 +162,8 @@
         "type": "function",
         "z": "f_dash",
         "name": "Config -> context",
-        "func": "// Opgeslagen config uit /data lezen en in global context zetten.\n// De inlogvelden worden BEWUST NIET voorinvuld. Uitgang 1 = positie herstellen,\n// uitgang 2 = laadpalen automatisch ophalen (als inloggegevens bekend zijn).\nlet cfg = {};\ntry { cfg = JSON.parse(msg.payload); } catch (e) { cfg = {}; }\nlet posMsg = null;\nlet fetchMsg = null;\nif (cfg && typeof cfg === 'object' && Object.keys(cfg).length) {\n    global.set('zaptecCfg', cfg);\n    node.status({ fill: 'green', shape: 'dot', text: 'config geladen' });\n    if (cfg.position !== undefined && cfg.position !== null && cfg.position !== '') {\n        posMsg = { payload: parseInt(cfg.position, 10) };\n    }\n    if (cfg.username && cfg.password) {\n        fetchMsg = {};\n    }\n}\nreturn [posMsg, fetchMsg];\n",
-        "outputs": 2,
+        "func": "// Opgeslagen config uit /data lezen en in global context zetten.\n// De inlogvelden worden BEWUST NIET voorinvuld. Uitgang 1 = positie herstellen,\n// uitgang 2 = laadpalen automatisch ophalen (als inloggegevens bekend zijn).\nlet cfg = {};\ntry { cfg = JSON.parse(msg.payload); } catch (e) { cfg = {}; }\nlet posMsg = null;\nlet fetchMsg = null;\nlet userMsg = null;\nif (cfg && typeof cfg === 'object' && Object.keys(cfg).length) {\n    global.set('zaptecCfg', cfg);\n    node.status({ fill: 'green', shape: 'dot', text: 'config geladen' });\n    if (cfg.position !== undefined && cfg.position !== null && cfg.position !== '') {\n        posMsg = { payload: parseInt(cfg.position, 10) };\n    }\n    if (cfg.username && cfg.password) {\n        fetchMsg = {};\n    }\n    if (cfg.username) {\n        // Alleen de gebruikersnaam voorinvullen (wachtwoord bewust niet).\n        userMsg = { payload: { username: cfg.username } };\n    }\n}\nreturn [posMsg, fetchMsg, userMsg];\n",
+        "outputs": 3,
         "timeout": "",
         "noerr": 0,
         "initialize": "",
@@ -177,6 +177,9 @@
             ],
             [
                 "d_fn_listauth"
+            ],
+            [
+                "d_form"
             ]
         ]
     },
@@ -591,35 +594,121 @@
         "id": "p_comment",
         "type": "comment",
         "z": "f_poll",
-        "name": "Uitlezen Zaptec -> virtuele energiemeter (config komt uit VRM)",
+        "name": "Adaptief uitlezen: snel bij live kijken / laden, traag bij idle",
         "info": "",
-        "x": 340,
+        "x": 320,
         "y": 40,
         "wires": []
     },
     {
-        "id": "p_poll",
+        "id": "p_tick",
         "type": "inject",
         "z": "f_poll",
-        "name": "Poll (30s)",
+        "name": "Basistik (5s)",
         "props": [
             {
                 "p": "payload"
             }
         ],
-        "repeat": "30",
+        "repeat": "5",
         "crontab": "",
         "once": true,
         "onceDelay": "8",
         "topic": "",
         "payload": "",
         "payloadType": "date",
-        "x": 130,
-        "y": 140,
+        "x": 120,
+        "y": 120,
+        "wires": [
+            [
+                "p_sched"
+            ]
+        ]
+    },
+    {
+        "id": "p_sched",
+        "type": "function",
+        "z": "f_poll",
+        "name": "Adaptieve planner",
+        "func": "// Adaptief pollen: snel bij live kijken, wat trager tijdens laden, traag bij idle.\nconst now = Date.now();\nconst S = 1000;\nconst iWatch = (parseInt(env.get('ZAPTEC_POLL_WATCHING_SEC'), 10) || 5) * S;\nconst iCharge = (parseInt(env.get('ZAPTEC_POLL_CHARGING_SEC'), 10) || 15) * S;\nconst iIdle = (parseInt(env.get('ZAPTEC_POLL_IDLE_SEC'), 10) || 120) * S;\nconst watchTimeout = (parseInt(env.get('ZAPTEC_WATCH_TIMEOUT_SEC'), 10) || 90) * S;\n\nconst lastAct = flow.get('lastVrmActivity') || 0;\nconst watching = (now - lastAct) < watchTimeout;\nconst charging = flow.get('chargeState') === 'charging';\nconst interval = watching ? iWatch : (charging ? iCharge : iIdle);\n\nconst lastFetch = flow.get('lastFetchTs') || 0;\nif (now - lastFetch >= interval) {\n    flow.set('lastFetchTs', now);\n    const mode = watching ? 'live' : (charging ? 'laden' : 'idle');\n    node.status({ fill: 'blue', shape: 'ring', text: 'poll (' + mode + ')' });\n    return msg;\n}\nreturn null;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 300,
+        "y": 120,
         "wires": [
             [
                 "p_prep"
             ]
+        ]
+    },
+    {
+        "id": "p_mqtt_broker",
+        "type": "mqtt-broker",
+        "name": "Venus OS broker (localhost)",
+        "broker": "127.0.0.1",
+        "port": "1883",
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    },
+    {
+        "id": "p_mqtt_in",
+        "type": "mqtt in",
+        "z": "f_poll",
+        "name": "Live-kijk detectie",
+        "topic": "N/+/system/0/#",
+        "qos": "0",
+        "datatype": "auto-detect",
+        "broker": "p_mqtt_broker",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 130,
+        "y": 200,
+        "wires": [
+            [
+                "p_fn_activity"
+            ]
+        ]
+    },
+    {
+        "id": "p_fn_activity",
+        "type": "function",
+        "z": "f_poll",
+        "name": "Kijk-activiteit noteren",
+        "func": "// Passieve live-kijk detectie: als de Venus MQTT-broker data stuurt, houdt iemand\n// (VRM-app, GX-display of lokale app) de broker 'wakker'. Wij sturen zelf GEEN keepalive,\n// dus we ontvangen alleen iets wanneer er daadwerkelijk een live kijker actief is.\nflow.set('lastVrmActivity', Date.now());\nreturn null;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 350,
+        "y": 200,
+        "wires": [
+            []
         ]
     },
     {
@@ -635,7 +724,7 @@
         "finalize": "",
         "libs": [],
         "x": 320,
-        "y": 140,
+        "y": 300,
         "wires": [
             [
                 "p_tok"
@@ -742,7 +831,7 @@
         "type": "function",
         "z": "f_poll",
         "name": "4. Zaptec -> Victron energiemeter",
-        "func": "// Zet Zaptec state-observaties om naar payload voor een Victron energiemeter (rol: EV charger).\nconst obs = Array.isArray(msg.payload)\n    ? msg.payload\n    : (msg.payload && Array.isArray(msg.payload.Data) ? msg.payload.Data : []);\nif (!obs.length) {\n    node.status({ fill: 'yellow', shape: 'ring', text: 'geen state ontvangen' });\n    return null;\n}\n\n// Observaties indexeren op StateId.\nconst s = {};\nfor (const o of obs) {\n    if (o && o.StateId !== undefined && o.StateId !== null) {\n        s[o.StateId] = o.ValueAsString;\n    }\n}\n\nconst num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };\nconst r = (v, d) => { const f = Math.pow(10, d === undefined ? 0 : d); return Math.round((v || 0) * f) / f; };\n\n// Zaptec observatie-ID's (zie https://api.zaptec.com/api/constants).\nconst v1 = num(s[501]), v2 = num(s[502]), v3 = num(s[503]); // Voltage L1/L2/L3 (V)\nconst i1 = num(s[507]), i2 = num(s[508]), i3 = num(s[509]); // Current L1/L2/L3 (A)\nlet pTotal = num(s[513]);                                    // TotalChargePower (W)\n\n// Vermogen per fase (schijnbaar vermogen V*I; EV-laden benadert cos phi = 1).\nconst p1 = v1 * i1, p2 = v2 * i2, p3 = v3 * i3;\nconst pSum = p1 + p2 + p3;\nif (!pTotal) pTotal = pSum;\n\n// Online-status (IsOnline = observatie -2). Als afwezig: aannemen online.\nlet online = 1;\nif (s[-2] !== undefined) online = (s[-2] === '1' || s[-2] === 1) ? 1 : 0;\n\n// Totale (levensduur) energie in kWh voor /Ac/Energy/Forward.\nlet ef = flow.get('zaptecEnergyForward');\nif (typeof ef !== 'number' || isNaN(ef)) ef = 0;\nconst nowMs = Date.now();\nconst lastMs = flow.get('zaptecEnergyTs') || nowMs;\n\n// Probeer de officiele gesigneerde meterstand (OCMF, observatie 554) te lezen.\nfunction parseOcmfKwh(str) {\n    if (!str || typeof str !== 'string' || str.indexOf('OCMF') === -1) return null;\n    try {\n        const parts = str.split('|');\n        for (const p of parts) {\n            const t = p.trim();\n            if (t.charAt(0) === '{' && t.indexOf('\"RD\"') !== -1) {\n                const j = JSON.parse(t);\n                if (Array.isArray(j.RD) && j.RD.length) {\n                    const last = j.RD[j.RD.length - 1];\n                    if (last && last.RV !== undefined && last.RV !== null) {\n                        const val = parseFloat(last.RV);\n                        if (!isNaN(val)) return val;\n                    }\n                }\n            }\n        }\n    } catch (e) { /* negeren, val terug op integratie */ }\n    return null;\n}\n\nconst ocmf = parseOcmfKwh(s[554]);\nif (ocmf !== null && ocmf >= ef) {\n    ef = ocmf; // gebruik de officiele meterstand indien beschikbaar\n} else {\n    // Terugval: integreer vermogen over tijd. Guard voorkomt sprongen na downtime.\n    const dtH = (nowMs - lastMs) / 3600000;\n    if (dtH > 0 && dtH < 1) ef += (pTotal * dtH) / 1000;\n}\nflow.set('zaptecEnergyForward', ef);\nflow.set('zaptecEnergyTs', nowMs);\n\n// Positie in het Victron-systeem (via VRM-formulier of env). 0 = AC-uit 1, 1 = AC-in 1, 2 = AC-uit 2.\nconst _cfg = flow.get('zaptecCfg') || {};\nlet position = (_cfg.position !== undefined && _cfg.position !== null && _cfg.position !== '')\n    ? parseInt(_cfg.position, 10)\n    : parseInt(env.get('ZAPTEC_METER_POSITION'), 10);\nmsg.payload = {\n    Connected: online,\n    Position: isNaN(position) ? 1 : position,\n    'Ac/Power': r(pTotal, 1),\n    'Ac/Energy/Forward': r(ef, 3),\n    'Ac/L1/Voltage': r(v1, 1),\n    'Ac/L1/Current': r(i1, 2),\n    'Ac/L1/Power': r(p1, 1),\n    'Ac/L2/Voltage': r(v2, 1),\n    'Ac/L2/Current': r(i2, 2),\n    'Ac/L2/Power': r(p2, 1),\n    'Ac/L3/Voltage': r(v3, 1),\n    'Ac/L3/Current': r(i3, 2),\n    'Ac/L3/Power': r(p3, 1)\n};\n\nnode.status({ fill: online ? 'green' : 'grey', shape: 'dot', text: r(pTotal, 0) + ' W | ' + r(ef, 2) + ' kWh' });\nreturn msg;\n",
+        "func": "// Zet Zaptec state-observaties om naar payload voor een Victron energiemeter (rol: EV charger).\nconst obs = Array.isArray(msg.payload)\n    ? msg.payload\n    : (msg.payload && Array.isArray(msg.payload.Data) ? msg.payload.Data : []);\nif (!obs.length) {\n    node.status({ fill: 'yellow', shape: 'ring', text: 'geen state ontvangen' });\n    return null;\n}\n\n// Observaties indexeren op StateId.\nconst s = {};\nfor (const o of obs) {\n    if (o && o.StateId !== undefined && o.StateId !== null) {\n        s[o.StateId] = o.ValueAsString;\n    }\n}\n\nconst num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };\nconst r = (v, d) => { const f = Math.pow(10, d === undefined ? 0 : d); return Math.round((v || 0) * f) / f; };\n\n// Zaptec observatie-ID's (zie https://api.zaptec.com/api/constants).\nconst v1 = num(s[501]), v2 = num(s[502]), v3 = num(s[503]); // Voltage L1/L2/L3 (V)\nconst i1 = num(s[507]), i2 = num(s[508]), i3 = num(s[509]); // Current L1/L2/L3 (A)\nlet pTotal = num(s[513]);                                    // TotalChargePower (W)\n\n// Vermogen per fase (schijnbaar vermogen V*I; EV-laden benadert cos phi = 1).\nconst p1 = v1 * i1, p2 = v2 * i2, p3 = v3 * i3;\nconst pSum = p1 + p2 + p3;\nif (!pTotal) pTotal = pSum;\n\n// Online-status (IsOnline = observatie -2). Als afwezig: aannemen online.\nlet online = 1;\nif (s[-2] !== undefined) online = (s[-2] === '1' || s[-2] === 1) ? 1 : 0;\n\n// Totale (levensduur) energie in kWh voor /Ac/Energy/Forward.\nlet ef = flow.get('zaptecEnergyForward');\nif (typeof ef !== 'number' || isNaN(ef)) ef = 0;\nconst nowMs = Date.now();\nconst lastMs = flow.get('zaptecEnergyTs') || nowMs;\n\n// Probeer de officiele gesigneerde meterstand (OCMF, observatie 554) te lezen.\nfunction parseOcmfKwh(str) {\n    if (!str || typeof str !== 'string' || str.indexOf('OCMF') === -1) return null;\n    try {\n        const parts = str.split('|');\n        for (const p of parts) {\n            const t = p.trim();\n            if (t.charAt(0) === '{' && t.indexOf('\"RD\"') !== -1) {\n                const j = JSON.parse(t);\n                if (Array.isArray(j.RD) && j.RD.length) {\n                    const last = j.RD[j.RD.length - 1];\n                    if (last && last.RV !== undefined && last.RV !== null) {\n                        const val = parseFloat(last.RV);\n                        if (!isNaN(val)) return val;\n                    }\n                }\n            }\n        }\n    } catch (e) { /* negeren, val terug op integratie */ }\n    return null;\n}\n\nconst ocmf = parseOcmfKwh(s[554]);\nif (ocmf !== null && ocmf >= ef) {\n    ef = ocmf; // gebruik de officiele meterstand indien beschikbaar\n} else {\n    // Terugval: integreer vermogen over tijd. Guard voorkomt sprongen na downtime.\n    const dtH = (nowMs - lastMs) / 3600000;\n    if (dtH > 0 && dtH < 1) ef += (pTotal * dtH) / 1000;\n}\nflow.set('zaptecEnergyForward', ef);\nflow.set('zaptecEnergyTs', nowMs);\n\n// Positie in het Victron-systeem (via VRM-formulier of env). 0 = AC-uit 1, 1 = AC-in 1, 2 = AC-uit 2.\nconst _cfg = flow.get('zaptecCfg') || {};\nlet position = (_cfg.position !== undefined && _cfg.position !== null && _cfg.position !== '')\n    ? parseInt(_cfg.position, 10)\n    : parseInt(env.get('ZAPTEC_METER_POSITION'), 10);\nmsg.payload = {\n    Connected: online,\n    Position: isNaN(position) ? 1 : position,\n    'Ac/Power': r(pTotal, 1),\n    'Ac/Energy/Forward': r(ef, 3),\n    'Ac/L1/Voltage': r(v1, 1),\n    'Ac/L1/Current': r(i1, 2),\n    'Ac/L1/Power': r(p1, 1),\n    'Ac/L2/Voltage': r(v2, 1),\n    'Ac/L2/Current': r(i2, 2),\n    'Ac/L2/Power': r(p2, 1),\n    'Ac/L3/Voltage': r(v3, 1),\n    'Ac/L3/Current': r(i3, 2),\n    'Ac/L3/Power': r(p3, 1)\n};\n\nconst _mode = parseInt(s[710], 10);\nconst _charging = (_mode === 3) || (pTotal > 100);\nflow.set('chargeState', _charging ? 'charging' : 'idle');\n\nnode.status({ fill: online ? (_charging ? 'green' : 'blue') : 'grey', shape: 'dot', text: (_charging ? 'laden ' : 'idle ') + r(pTotal, 0) + ' W | ' + r(ef, 2) + ' kWh' });\nreturn msg;\n",
         "outputs": 1,
         "timeout": "",
         "noerr": 0,
