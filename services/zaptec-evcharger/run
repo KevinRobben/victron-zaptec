@@ -1,0 +1,17 @@
+#!/bin/sh
+# Venus OS runit service runner voor de Zaptec EV Charger D-Bus brug
+# Runit wordt gebruikt door Venus OS (geen systemd)
+
+exec 2>&1
+
+# Omgevingsvariabelen (overschrijf indien nodig in /etc/default/zaptec-evcharger)
+[ -f /etc/default/zaptec-evcharger ] && . /etc/default/zaptec-evcharger
+
+VENUS_MQTT_HOST="${VENUS_MQTT_HOST:-localhost}"
+VENUS_MQTT_PORT="${VENUS_MQTT_PORT:-1883}"
+DBUS_INSTANCE_BASE="${DBUS_INSTANCE_BASE:-40}"
+LOG_LEVEL="${LOG_LEVEL:-INFO}"
+
+export VENUS_MQTT_HOST VENUS_MQTT_PORT DBUS_INSTANCE_BASE LOG_LEVEL
+
+exec /usr/bin/python3 /opt/victronenergy/zaptec-evcharger/dbus-evcharger.py

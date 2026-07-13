@@ -1,0 +1,14 @@
+# Zaptec EV Charger D-Bus Service – standaardconfiguratie
+# Kopieer dit bestand naar /etc/default/zaptec-evcharger en pas aan
+
+# MQTT broker adres (standaard: localhost)
+VENUS_MQTT_HOST=localhost
+
+# MQTT poort (standaard: 1883)
+VENUS_MQTT_PORT=1883
+
+# D-Bus apparaat-instantienummer (eerste laadpaal krijgt dit nummer, volgende laadpalen +1)
+DBUS_INSTANCE_BASE=40
+
+# Logniveau: DEBUG, INFO, WARNING, ERROR
+LOG_LEVEL=INFO

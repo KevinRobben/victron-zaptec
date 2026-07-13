@@ -1,0 +1,3 @@
+#!/bin/sh
+# Runit log runner – schrijft service-logs naar /var/log/zaptec-evcharger/
+exec svlogd -tt /var/log/zaptec-evcharger

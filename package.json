@@ -1,0 +1,37 @@
+{
+  "name": "zaptec-victron-nodered-bridge",
+  "version": "1.0.0",
+  "description": "Node-RED bridge: Zaptec EV-laadpalen uitlezen en weergeven als Victron EV Charger energiemeter",
+  "keywords": [
+    "node-red",
+    "victron",
+    "zaptec",
+    "ev-charger",
+    "venus-os",
+    "energy-meter",
+    "cerbo-gx"
+  ],
+  "license": "MIT",
+  "node-red": {
+    "version": ">=3.0.0"
+  },
+  "dependencies": {
+    "node-red-contrib-victron": "^1.7.0"
+  },
+  "scripts": {
+    "install-deps": "pip3 install paho-mqtt",
+    "start-dbus-service": "python3 scripts/dbus-evcharger.py",
+    "validate-flow": "node -e \"require('./flows/zaptec-victron-bridge.json'); console.log('Flow JSON geldig');\""
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/your-org/zaptec-victron-nodered-bridge.git"
+  },
+  "author": "Uw bedrijfsnaam",
+  "bugs": {
+    "url": "https://github.com/your-org/zaptec-victron-nodered-bridge/issues"
+  }
+}
