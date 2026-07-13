@@ -156,11 +156,17 @@ Waarom dit handig is voor jullie als installateur:
 1. Zorg dat `@flowfuse/node-red-dashboard` is geïnstalleerd en de flow is gedeployed
    (zie *Installatie*).
 2. Open in VRM onder **Venus OS Large** de **dashboard-tegel**.
-3. Klik op **"Toon mijn laadpalen"** om de laadpalen van het account te tonen
+3. Vul **gebruikersnaam en wachtwoord** in (de charger Id mag je nog leeg laten) en
+   klik **Opslaan**.
+4. Klik op **"Toon mijn laadpalen"**. De laadpalen van het account verschijnen
    (naam + Id). Kopieer de juiste **Id (GUID)**.
-4. Vul **gebruikersnaam, wachtwoord en charger Id** in en klik **Opslaan**.
-5. De configuratie wordt opgeslagen in `/data/zaptec-config.json` (blijft behouden
+5. Plak de **Id (GUID)** in het veld en klik nogmaals **Opslaan**.
+6. De configuratie wordt opgeslagen in `/data/zaptec-config.json` (blijft behouden
    na herstart) en de uitlezing start automatisch.
+
+> De charger Id is **niet verplicht bij de eerste keer opslaan**, juist zodat je
+> eerst kunt inloggen en daarna via *"Toon mijn laadpalen"* de juiste Id kunt
+> opzoeken. Zonder ingevulde Id wacht de uitlees-tab gewoon af.
 
 De invoer wordt bewaard in de **global context** en in het bestand
 `/data/zaptec-config.json`.

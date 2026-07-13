@@ -203,10 +203,10 @@
                 "rows": null
             },
             {
-                "label": "Charger Id (GUID)",
+                "label": "Charger Id (GUID) - eerst leeg laten kan",
                 "key": "chargerId",
                 "type": "text",
-                "required": true,
+                "required": false,
                 "rows": null
             }
         ],
@@ -234,7 +234,7 @@
         "type": "function",
         "z": "f_dash",
         "name": "Config opslaan",
-        "func": "// Formulier opslaan -> global context + persistent bestand. Uitgang 1 = bestand, uitgang 2 = melding.\nconst p = msg.payload || {};\nconst cfg = {\n    baseUrl: (p.baseUrl && String(p.baseUrl).trim()) || 'https://api.zaptec.com',\n    username: String(p.username || '').trim(),\n    password: String(p.password || ''),\n    chargerId: String(p.chargerId || '').trim()\n};\nif (!cfg.username || !cfg.password || !cfg.chargerId) {\n    node.status({ fill: 'red', shape: 'dot', text: 'vul alle velden in' });\n    return [null, { payload: 'Vul gebruikersnaam, wachtwoord en charger Id in.' }];\n}\nglobal.set('zaptecCfg', cfg);\nglobal.set('zaptecToken', null);\nglobal.set('zaptecTokenExpiry', 0);\nnode.status({ fill: 'green', shape: 'dot', text: 'opgeslagen' });\nreturn [\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" },\n    { payload: 'Configuratie opgeslagen. Het uitlezen start automatisch.' }\n];\n",
+        "func": "// Formulier opslaan -> global context + persistent bestand. Uitgang 1 = bestand, uitgang 2 = melding.\n// De charger-Id (GUID) is NIET verplicht bij opslaan, zodat je eerst kunt inloggen en\n// daarna via \"Toon mijn laadpalen\" de juiste Id kunt opzoeken.\nconst p = msg.payload || {};\nconst cfg = {\n    baseUrl: (p.baseUrl && String(p.baseUrl).trim()) || 'https://api.zaptec.com',\n    username: String(p.username || '').trim(),\n    password: String(p.password || ''),\n    chargerId: String(p.chargerId || '').trim()\n};\nif (!cfg.username || !cfg.password) {\n    node.status({ fill: 'red', shape: 'dot', text: 'vul gebruikersnaam + wachtwoord in' });\n    return [null, { payload: 'Vul minimaal gebruikersnaam en wachtwoord in.' }];\n}\n// Behoud een eerder opgeslagen charger-Id als het veld nu leeg is.\nif (!cfg.chargerId) {\n    const prev = global.get('zaptecCfg') || {};\n    cfg.chargerId = prev.chargerId || '';\n}\nglobal.set('zaptecCfg', cfg);\nglobal.set('zaptecToken', null);\nglobal.set('zaptecTokenExpiry', 0);\nnode.status({ fill: 'green', shape: 'dot', text: 'opgeslagen' });\nconst notif = cfg.chargerId\n    ? 'Configuratie opgeslagen. Het uitlezen start automatisch.'\n    : 'Inloggegevens opgeslagen. Klik nu \"Toon mijn laadpalen\" en vul daarna de Id in.';\nreturn [\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" },\n    { payload: notif }\n];\n",
         "outputs": 2,
         "timeout": "",
         "noerr": 0,
