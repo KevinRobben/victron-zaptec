@@ -1,145 +1,150 @@
 #!/bin/bash
 # =============================================================================
-# Zaptec EV Charger – Victron Venus OS Installatiescript
+# Zaptec → Victron EV Charger – Installatiescript (Venus OS v3.80+)
 # =============================================================================
-# Installeert de Zaptec D-Bus brug op een Victron Cerbo GX / Venus OS apparaat.
-# Voer dit script uit als root op het Cerbo GX/Venus OS systeem.
+# Configureert omgevingsvariabelen voor Node-RED en geeft stapsgewijze
+# instructies voor het aanmaken van het virtuele EV-apparaat in Venus OS.
 #
 # Gebruik:
-#   scp -r . root@venus.local:/tmp/zaptec-install/
-#   ssh root@venus.local "bash /tmp/zaptec-install/scripts/install.sh"
+#   ssh root@venus.local
+#   bash /tmp/zaptec-install/scripts/install.sh
 # =============================================================================
 
 set -e
 
-INSTALL_DIR="/opt/victronenergy/zaptec-evcharger"
-SERVICE_DIR="/opt/victronenergy/service"
-RUNIT_DIR="/service"
-LOG_DIR="/var/log/zaptec-evcharger"
-CONF_FILE="/etc/default/zaptec-evcharger"
+GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
+info()    { echo -e "${GREEN}[INFO]${NC}  $1"; }
+warn()    { echo -e "${YELLOW}[WARN]${NC}  $1"; }
+error()   { echo -e "${RED}[ERROR]${NC} $1"; }
+section() { echo -e "\n${GREEN}══════════════════════════════════════════${NC}"; echo -e "${GREEN}  $1${NC}"; echo -e "${GREEN}══════════════════════════════════════════${NC}"; }
 
-# Kleuren voor output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-log_info()    { echo -e "${GREEN}[INFO]${NC}  $1"; }
-log_warn()    { echo -e "${YELLOW}[WARN]${NC}  $1"; }
-log_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
-log_section() { echo -e "\n${GREEN}=== $1 ===${NC}"; }
-
-# Controleer of we als root draaien
 if [ "$(id -u)" -ne 0 ]; then
-    log_error "Dit script moet als root worden uitgevoerd"
+    error "Voer dit script uit als root (ssh root@venus.local)"
     exit 1
-fi
-
-# Controleer of we op Venus OS draaien
-if [ ! -f /etc/venus/machine ]; then
-    log_warn "Geen Venus OS gedetecteerd (/etc/venus/machine ontbreekt)"
-    log_warn "Verdergaan in testmodus – sommige stappen worden overgeslagen"
-    VENUS_OS=false
-else
-    MACHINE=$(cat /etc/venus/machine)
-    log_info "Venus OS apparaat: $MACHINE"
-    VENUS_OS=true
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 
-log_section "1. paho-mqtt Python bibliotheek installeren"
-if python3 -c "import paho.mqtt" 2>/dev/null; then
-    log_info "paho-mqtt is al geïnstalleerd"
-else
-    log_info "paho-mqtt installeren..."
-    pip3 install paho-mqtt --break-system-packages 2>/dev/null || \
-    pip3 install paho-mqtt || \
-    opkg install python3-paho-mqtt 2>/dev/null || \
-    { log_error "Kon paho-mqtt niet installeren. Installeer handmatig met: pip3 install paho-mqtt"; exit 1; }
-    log_info "paho-mqtt geïnstalleerd"
+# ── Venus OS versie controleren ────────────────────────────────────
+section "1. Venus OS versie controleren"
+if [ -f /etc/venus/machine ]; then
+    MACHINE=$(cat /etc/venus/machine)
+    info "Apparaat: $MACHINE"
 fi
 
-log_section "2. Python D-Bus brug service installeren"
-mkdir -p "$INSTALL_DIR"
-cp "$SCRIPT_DIR/dbus-evcharger.py" "$INSTALL_DIR/"
-chmod +x "$INSTALL_DIR/dbus-evcharger.py"
-log_info "Script geïnstalleerd in $INSTALL_DIR"
-
-log_section "3. Runit service installeren"
-SERVICE_INSTALL_DIR="$SERVICE_DIR/zaptec-evcharger"
-mkdir -p "$SERVICE_INSTALL_DIR/log"
-mkdir -p "$LOG_DIR"
-
-cp "$REPO_DIR/services/zaptec-evcharger/run"     "$SERVICE_INSTALL_DIR/run"
-cp "$REPO_DIR/services/zaptec-evcharger/log/run" "$SERVICE_INSTALL_DIR/log/run"
-chmod +x "$SERVICE_INSTALL_DIR/run"
-chmod +x "$SERVICE_INSTALL_DIR/log/run"
-log_info "Runit service bestanden geïnstalleerd"
-
-log_section "4. Configuratiebestand aanmaken"
-if [ ! -f "$CONF_FILE" ]; then
-    cp "$REPO_DIR/services/zaptec-evcharger/conf" "$CONF_FILE"
-    log_info "Configuratiebestand aangemaakt: $CONF_FILE"
-    log_warn "Pas $CONF_FILE aan indien nodig (bijv. ander MQTT broker adres)"
-else
-    log_info "Configuratiebestand bestaat al: $CONF_FILE (niet overschreven)"
+if [ -f /opt/victronenergy/version ]; then
+    VER=$(cat /opt/victronenergy/version 2>/dev/null || echo 'onbekend')
+    info "Venus OS versie: $VER"
+    # Controleer op v3.80+
+    MAJOR=$(echo "$VER" | cut -d. -f1)
+    MINOR=$(echo "$VER" | cut -d. -f2 | cut -d~ -f1)
+    if [ "$MAJOR" -lt 3 ] || { [ "$MAJOR" -eq 3 ] && [ "$MINOR" -lt 80 ]; }; then
+        warn "Venus OS v3.80+ aanbevolen voor virtueel EV-apparaat support"
+        warn "Huidige versie: $VER"
+        warn "Installeer Venus OS v3.80 beta via: Instellingen → Firmware → Online updates → Controleer op updates (beta)"
+    else
+        info "Venus OS versie is geschikt voor virtueel EV-apparaat"
+    fi
 fi
 
-log_section "5. Node-RED omgevingsvariabelen"
-log_warn "Stel de volgende omgevingsvariabelen in voor Node-RED:"
+# ── Node-RED omgevingsvariabelen instellen ─────────────────────────
+section "2. Node-RED omgevingsvariabelen"
+
+NODERED_ENV="/etc/venus/nodered.env"
+
+# Vraag om VRM Portal ID
 echo ""
-echo "  ZAPTEC_USERNAME   = jouw Zaptec account e-mailadres"
-echo "  ZAPTEC_PASSWORD   = jouw Zaptec account wachtwoord"
-echo "  VENUS_MQTT_HOST   = localhost (of IP van MQTT broker)"
+echo "  Het VRM Portal ID vind je via:"
+echo "  • VRM portaal: https://vrm.victronenergy.com → klik op installatie → Settings"
+echo "  • Of op het GX-scherm: Instellingen → VRM Online portaal → VRM Portal ID"
+echo ""
+read -p "  Voer VRM_PORTAL_ID in (bijv. a1b2c3d4e5f6): " VRM_ID
+
+if [ -z "$VRM_ID" ]; then
+    warn "VRM_PORTAL_ID niet ingevoerd – stel dit later handmatig in via Node-RED"
+fi
+
+echo ""
+read -p "  Voer ZAPTEC_USERNAME in (e-mailadres): " ZAPTEC_USER
+read -s -p "  Voer ZAPTEC_PASSWORD in: " ZAPTEC_PASS
 echo ""
 
-if $VENUS_OS; then
-    NODERED_ENV="/etc/venus/nodered.env"
+# Schrijf omgevingsvariabelen
+if [ -n "$VRM_ID" ] || [ -n "$ZAPTEC_USER" ]; then
+    # Verwijder bestaande instellingen
     if [ -f "$NODERED_ENV" ]; then
-        log_info "Voeg variabelen toe aan $NODERED_ENV of stel ze in via Node-RED beheerinterface"
-    else
-        log_info "Stel omgevingsvariabelen in via Node-RED beheerinterface (Beheer > Omgevingsvariabelen)"
-        log_info "Of maak /etc/venus/nodered.env aan met de variabelen"
+        sed -i '/^VRM_PORTAL_ID=/d' "$NODERED_ENV"
+        sed -i '/^ZAPTEC_USERNAME=/d' "$NODERED_ENV"
+        sed -i '/^ZAPTEC_PASSWORD=/d' "$NODERED_ENV"
+        sed -i '/^DBUS_INSTANCE_BASE=/d' "$NODERED_ENV"
     fi
+
+    [ -n "$VRM_ID" ]     && echo "VRM_PORTAL_ID=$VRM_ID"          >> "$NODERED_ENV"
+    [ -n "$ZAPTEC_USER" ] && echo "ZAPTEC_USERNAME=$ZAPTEC_USER"  >> "$NODERED_ENV"
+    [ -n "$ZAPTEC_PASS" ] && echo "ZAPTEC_PASSWORD=$ZAPTEC_PASS"  >> "$NODERED_ENV"
+    echo "DBUS_INSTANCE_BASE=40"                                   >> "$NODERED_ENV"
+
+    info "Omgevingsvariabelen opgeslagen in $NODERED_ENV"
+else
+    warn "Geen variabelen opgegeven – stel deze in via Node-RED beheerinterface"
 fi
 
-log_section "6. Node-RED flow importeren"
+# ── Node-RED flow importeren ───────────────────────────────────────
+section "3. Node-RED flow importeren"
 echo ""
-echo "  1. Open Node-RED in uw browser: http://venus.local:1880"
-echo "  2. Klik op het hamburgermenu (≡) rechtsboven"
-echo "  3. Kies 'Importeren'"
-echo "  4. Klik 'Bestand selecteren' en kies: flows/zaptec-victron-bridge.json"
-echo "  5. Klik 'Importeren' en vervolgens 'Implementeren'"
+info "Importeer de flow handmatig in Node-RED:"
+echo ""
+echo "  1. Open Node-RED: http://$(hostname -I | awk '{print $1}'):1880"
+echo "  2. Hamburgermenu (≡) → Importeren"
+echo "  3. Selecteer bestand: flows/zaptec-victron-bridge.json"
+echo "  4. Klik 'Importeren' → 'Implementeren'"
 echo ""
 
-log_section "7. Runit service activeren en starten"
-if $VENUS_OS; then
-    # Koppel de service aan /service voor automatisch opstarten
-    if [ ! -L "$RUNIT_DIR/zaptec-evcharger" ]; then
-        ln -sf "$SERVICE_DIR/zaptec-evcharger" "$RUNIT_DIR/zaptec-evcharger"
-        log_info "Runit symlink aangemaakt"
-    fi
+# Kopieer flow naar bekende locatie
+FLOW_DEST="/root/zaptec-victron-bridge.json"
+cp "$REPO_DIR/flows/zaptec-victron-bridge.json" "$FLOW_DEST"
+info "Flow ook gekopieerd naar: $FLOW_DEST"
 
-    # Service starten
-    sleep 1
-    if sv status zaptec-evcharger 2>/dev/null | grep -q "run:"; then
-        log_info "Service draait al"
-    else
-        sv start zaptec-evcharger 2>/dev/null && log_info "Service gestart" || \
-            log_warn "Service kon niet automatisch worden gestart. Probeer: sv start zaptec-evcharger"
+# ── Virtueel EV-apparaat aanmaken in Venus OS v3.80 ───────────────
+section "4. Virtueel EV-apparaat aanmaken (Venus OS v3.80)"
+echo ""
+warn "BELANGRIJK: voer onderstaande stappen uit op het GX-display of via Remote Console"
+echo ""
+echo "  Navigeer naar:"
+echo "  Instellingen → EV-laadstation → Voeg virtueel apparaat toe"
+echo ""
+echo "  Of via Remote Console (http://venus.local):"
+echo "  Settings → EV Charging Station → Add virtual EV charger"
+echo ""
+echo "  Noteer het toegewezen instantienummer (bijv. 40, 41, 42...)"
+echo "  Standaard gebruikt deze brug instantienummer 40 voor de eerste laadpaal."
+echo ""
+echo "  Als het GX een ander instantienummer toewijst, pas dan DBUS_INSTANCE_BASE"
+echo "  aan in $NODERED_ENV en herstart Node-RED."
+echo ""
+
+# ── Node-RED herstarten ────────────────────────────────────────────
+section "5. Node-RED herstarten"
+if sv status nodered 2>/dev/null | grep -q "run:"; then
+    read -p "  Node-RED herstarten om variabelen toe te passen? [J/n]: " RESTART
+    if [ "$RESTART" != "n" ] && [ "$RESTART" != "N" ]; then
+        sv restart nodered
+        info "Node-RED herstart – wacht 10 seconden..."
+        sleep 10
+        info "Node-RED draait weer"
     fi
 else
-    log_info "Niet op Venus OS – service handmatig starten met:"
-    echo "  python3 $INSTALL_DIR/dbus-evcharger.py"
+    warn "Node-RED service niet gevonden via runit – herstart handmatig"
 fi
 
-log_section "Installatie voltooid!"
+section "Installatie voltooid!"
 echo ""
-echo "  Controleer service status:  sv status zaptec-evcharger"
-echo "  Bekijk service logs:        tail -f $LOG_DIR/current"
-echo "  Herstart service:           sv restart zaptec-evcharger"
+echo "  Controleer de meetwaarden:"
+echo "  • Node-RED debug panel: http://$(hostname -I | awk '{print $1}'):1880"
+echo "  • Victron VRM: https://vrm.victronenergy.com"
+echo "  • GX-display: Apparaten → EV-laadstation"
 echo ""
-log_info "Zodra Node-RED de eerste Zaptec-meetwaarden publiceert, verschijnen"
-log_info "de laadpalen automatisch als EV Charger in Victron VRM en GX-display."
+echo "  MQTT berichten controleren:"
+echo "  mosquitto_sub -v -t 'W/${VRM_ID}/evcharger/#'"
+echo ""
