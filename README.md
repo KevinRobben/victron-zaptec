@@ -107,6 +107,7 @@ Zet op de GX de volgende variabelen (bijv. via de Node-RED `settings.js` onder
 | `ZAPTEC_PASSWORD`    | ja        | –                         | Zaptec portal-wachtwoord             |
 | `ZAPTEC_CHARGER_ID`  | ja        | –                         | GUID (`Id`) van de laadpaal          |
 | `ZAPTEC_BASE_URL`    | nee       | `https://api.zaptec.com`  | API-basis-URL                        |
+| `ZAPTEC_METER_POSITION` | nee    | `1` (AC-in 1)             | Positie in het systeem: `0` = AC-uit, `1` = AC-in 1, `2` = AC-in 2 |
 
 ### Optie B – Rechtstreeks in de flow
 
@@ -175,6 +176,12 @@ laadpaal of installatie gewijzigd.
   Voor een blijvende teller kun je in `settings.js` een *persistent context
   store* (bijv. `localfilesystem`) configureren, of vertrouwen op de OCMF-waarde
   (observatie 554) die Zaptec zelf bijhoudt.
+- **Positie (AC-in / AC-uit)**: de meter wordt standaard op **AC-in 1**
+  gepresenteerd (`Position = 1`). Wil je AC-uit of AC-in 2, zet dan
+  `ZAPTEC_METER_POSITION` op respectievelijk `0` of `2` (of pas de `Position`-waarde
+  aan in de functie *4. Zaptec -> Victron energiemeter*). Let op: `PositionIsAdjustable`
+  van deze virtuele meter staat op `0`, dus de positie is **niet** via de GX-GUI te
+  wijzigen — dit gebeurt uitsluitend via de flow.
 - **Aantal fasen**: de virtuele meter staat op 3 fasen. Bij een 1-fase laadpaal
   blijven L2/L3 op 0. Desgewenst kun je in de `victron-virtual` node het aantal
   fasen op 1 zetten.
