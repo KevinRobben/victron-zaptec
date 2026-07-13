@@ -101,6 +101,8 @@ De volledige lijst met observatie-ID's staat in
   moet beschikbaar zijn (aanwezig in de node-versie die met Venus OS 3.80 meekomt).
   Er is **geen SSH-toegang en geen externe driver** nodig; alles draait binnen
   Node-RED.
+- De palette **`@flowfuse/node-red-dashboard`** (Dashboard 2.0) voor de
+  VRM-invulvelden. Te installeren via *Manage Palette* in de Node-RED editor.
 - **Internettoegang** vanaf de GX naar `api.zaptec.com` (HTTPS).
 - Een **Zaptec account met owner-rechten** op de betreffende installatie(s)
   (nodig om charger-state uit te lezen).
@@ -109,58 +111,37 @@ De volledige lijst met observatie-ID's staat in
 
 ## Installatie
 
-Er zijn twee kant-en-klare flows; kies er één:
+Eén bestand: [`flows.json`](./flows.json).
 
-- [`flows.json`](./flows.json) – eenvoudig; configuratie via omgevingsvariabelen of
-  in de flow (Optie A/B hieronder).
-- [`flows-dashboard.json`](./flows-dashboard.json) – met **invulvelden in VRM**
-  (Optie C hieronder). Aanbevolen als de klant/medewerker zelf per installatie de
-  eigen inloggegevens invult. Vereist de palette `@flowfuse/node-red-dashboard`.
-
-Stappen:
-
-1. Open Node-RED op de GX (via VRM → *Venus OS Large* → Node-RED, of
+1. Installeer eenmalig in Node-RED (**Manage Palette → Install**) de package
+   **`@flowfuse/node-red-dashboard`** (Dashboard 2.0, voor de VRM-invulvelden). Dit
+   vereist tijdelijk internettoegang op de GX.
+2. Open Node-RED op de GX (via VRM → *Venus OS Large* → Node-RED, of
    `http://<gx-ip>:1880`).
-2. Menu (rechtsboven) → **Import** → plak de inhoud van de gekozen flow → **Import**.
-3. Stel de credentials in (zie *Configuratie* hieronder).
+3. Menu (rechtsboven) → **Import** → plak de inhoud van [`flows.json`](./flows.json)
+   → **Import**.
 4. **Deploy**.
+5. Configureer via het VRM-formulier (zie *Configuratie* hieronder).
 
-Bij `flows.json` verschijnen twee tabbladen:
+Er verschijnen twee tabbladen:
 
-- **Zaptec -> Victron (laadpaal-meter)** – de eigenlijke integratie.
-- **Zaptec - chargers opzoeken** – hulpmiddel om de charger-GUID op te zoeken.
+- **Zaptec configuratie (VRM)** – het invulformulier (verschijnt als dashboard-tegel
+  in VRM) plus de knop *"Toon mijn laadpalen"* om de charger-GUID op te zoeken.
+- **Zaptec -> Victron (uitlezen)** – de eigenlijke integratie die de laadpaal
+  read-only uitleest en als virtuele energiemeter toont.
+
+> Geen VRM-invulvelden nodig en liever geen dashboard-palette? Verwijder na het
+> importeren de tab **Zaptec configuratie (VRM)** en gebruik uitsluitend
+> omgevingsvariabelen (Optie B hieronder). De uitlees-tab werkt dan zelfstandig.
 
 ---
 
 ## Configuratie
 
-Er zijn twee manieren om de credentials in te stellen. **Omgevingsvariabelen
-worden aanbevolen**, omdat je dan geen wachtwoorden in de flow bewaart.
+### Optie A – Invulvelden in VRM (aanbevolen)
 
-### Optie A – Omgevingsvariabelen (aanbevolen)
-
-Zet op de GX de volgende variabelen (bijv. via de Node-RED `settings.js` onder
-`functionGlobalContext`/`env`, of als OS-omgevingsvariabelen):
-
-| Variabele            | Verplicht | Standaard                 | Omschrijving                         |
-|----------------------|-----------|---------------------------|--------------------------------------|
-| `ZAPTEC_USERNAME`    | ja        | –                         | Zaptec portal-gebruikersnaam (e-mail)|
-| `ZAPTEC_PASSWORD`    | ja        | –                         | Zaptec portal-wachtwoord             |
-| `ZAPTEC_CHARGER_ID`  | ja        | –                         | GUID (`Id`) van de laadpaal          |
-| `ZAPTEC_BASE_URL`    | nee       | `https://api.zaptec.com`  | API-basis-URL                        |
-| `ZAPTEC_METER_POSITION` | nee    | `1` (AC-in 1)             | Positie in het systeem: `0` = AC-uit, `1` = AC-in 1, `2` = AC-in 2 |
-
-### Optie B – Rechtstreeks in de flow
-
-Open de functie **`1. Config & token`** (tab *Zaptec -> Victron*) en de functie
-**`Auth-request bouwen`** (tab *chargers opzoeken*) en vervang de
-`VUL_...`-standaardwaarden door je eigen gegevens.
-
-### Optie C – Invulvelden in VRM (aanbevolen voor meerdere klanten)
-
-Gebruik [`flows-dashboard.json`](./flows-dashboard.json). Hiermee vult de
-**klant of een medewerker** de Zaptec-gebruikersnaam, het wachtwoord en de charger
-Id (GUID) in via een **formulier in VRM** — zonder de Node-RED editor of SSH.
+De **klant of een medewerker** vult de Zaptec-gebruikersnaam, het wachtwoord en de
+charger Id (GUID) in via een **formulier in VRM** — zonder Node-RED editor of SSH.
 
 Waarom dit handig is voor jullie als installateur:
 
@@ -172,65 +153,67 @@ Waarom dit handig is voor jullie als installateur:
 
 **Zo werkt het** (bevestigd in de Venus OS Large-handleiding):
 
-1. Installeer in Node-RED (Manage Palette → Install) de package
-   **`@flowfuse/node-red-dashboard`** (Dashboard 2.0). Dit vereist tijdelijk
-   internettoegang op de GX.
-2. Importeer [`flows-dashboard.json`](./flows-dashboard.json) en **Deploy**.
-3. Na deploy verschijnt in VRM onder **Venus OS Large** een extra **dashboard-tegel**.
-   Open die.
-4. Klik op **"Toon mijn laadpalen"** om de laadpalen van het account te tonen
+1. Zorg dat `@flowfuse/node-red-dashboard` is geïnstalleerd en de flow is gedeployed
+   (zie *Installatie*).
+2. Open in VRM onder **Venus OS Large** de **dashboard-tegel**.
+3. Klik op **"Toon mijn laadpalen"** om de laadpalen van het account te tonen
    (naam + Id). Kopieer de juiste **Id (GUID)**.
-5. Vul **gebruikersnaam, wachtwoord en charger Id** in en klik **Opslaan**.
-6. De configuratie wordt opgeslagen in `/data/zaptec-config.json` (blijft behouden
+4. Vul **gebruikersnaam, wachtwoord en charger Id** in en klik **Opslaan**.
+5. De configuratie wordt opgeslagen in `/data/zaptec-config.json` (blijft behouden
    na herstart) en de uitlezing start automatisch.
 
 De invoer wordt bewaard in de **global context** en in het bestand
-`/data/zaptec-config.json`. De uitlees-tab (*Zaptec -> Victron (uitlezen)*) gebruikt
-deze configuratie; is er nog niets ingevuld, dan wacht de flow gewoon af. Ook hier
-werken de omgevingsvariabelen uit Optie A nog als terugval.
+`/data/zaptec-config.json`.
 
 > Tip: het opslagbestand bevat het wachtwoord in leesbare vorm op de (lokale)
-> `/data`-partitie van de GX. Wil je dat vermijden, gebruik dan Optie A met
+> `/data`-partitie van de GX. Wil je dat vermijden, gebruik dan Optie B met
 > omgevingsvariabelen.
+
+### Optie B – Omgevingsvariabelen (terugval)
+
+In plaats van (of als terugval op) het VRM-formulier kun je op de GX
+omgevingsvariabelen zetten (bijv. via de Node-RED `settings.js` onder
+`functionGlobalContext`/`env`, of als OS-omgevingsvariabelen). Ingevulde
+VRM-waarden hebben voorrang; ontbreken ze, dan gebruikt de flow deze variabelen:
+
+| Variabele            | Verplicht | Standaard                 | Omschrijving                         |
+|----------------------|-----------|---------------------------|--------------------------------------|
+| `ZAPTEC_USERNAME`    | ja        | –                         | Zaptec portal-gebruikersnaam (e-mail)|
+| `ZAPTEC_PASSWORD`    | ja        | –                         | Zaptec portal-wachtwoord             |
+| `ZAPTEC_CHARGER_ID`  | ja        | –                         | GUID (`Id`) van de laadpaal          |
+| `ZAPTEC_BASE_URL`    | nee       | `https://api.zaptec.com`  | API-basis-URL                        |
+| `ZAPTEC_METER_POSITION` | nee    | `1` (AC-in 1)             | Positie in het systeem: `0` = AC-uit, `1` = AC-in 1, `2` = AC-in 2 |
 
 ### Charger-GUID opzoeken
 
-De `ZAPTEC_CHARGER_ID` is de **GUID** (`Id`) van de laadpaal, niet de zichtbare
-naam of het serienummer.
-
-1. Ga naar het tabblad **Zaptec - chargers opzoeken**.
-2. Klik op de inject-knop **Lijst chargers**.
-3. Open het **debug-paneel** (rechts). Je ziet per laadpaal `Id`, `DeviceId`,
-   `Name`, `InstallationName` en `IsOnline`.
-4. Gebruik de waarde van **`Id`** als `ZAPTEC_CHARGER_ID`.
+De charger Id is de **GUID** (`Id`) van de laadpaal, niet de zichtbare naam of het
+serienummer. Klik in de VRM dashboard-tegel op **"Toon mijn laadpalen"**: je ziet
+per laadpaal de naam, de **Id (GUID)** en of hij online is. Kopieer de juiste `Id`.
 
 ### Poll-interval
 
 Standaard elke 30 seconden. Aan te passen in de inject-node **Poll** (tab
-*Zaptec -> Victron*). Houd rekening met de Zaptec *API usage guidelines* en poll
-niet onnodig vaak. Voor near-realtime data zonder polling biedt Zaptec ook
-Service Bus-subscripties aan (buiten scope van dit basisflow).
+*Zaptec -> Victron (uitlezen)*). Houd rekening met de Zaptec *API usage guidelines*
+en poll niet onnodig vaak. Voor near-realtime data zonder polling biedt Zaptec ook
+Service Bus-subscripties aan (buiten scope van dit flow).
 
 ---
 
 ## Meerdere laadpalen op één locatie
 
-Wil je op één GX meerdere laadpalen tonen, dupliceer dan per extra laadpaal deze
-keten en geef elk een eigen charger-GUID en een eigen `victron-virtual` node:
+Dit flow is bedoeld voor **één laadpaal per GX** (het meest voorkomende geval). Wil
+je op één GX meerdere laadpalen tonen, dupliceer dan op de tab
+*Zaptec -> Victron (uitlezen)* de keten **1. Config & token → … →
+4. Zaptec -> Victron energiemeter → Laadpaal-meter (Victron)** per extra laadpaal:
 
-1. Kopieer de nodes **1. Config & token → … → 4. Zaptec -> Victron energiemeter →
-   Laadpaal-meter (Victron)**.
-2. Geef in de gekopieerde `1. Config & token` een andere charger-GUID op
-   (bijv. via een aparte `flow.set`-sleutel of een eigen env-variabele).
-3. Gebruik in de gekopieerde flow **aparte flow-context-sleutels** voor het token
-   en de energieteller (bijv. `zaptecCfg2`, `zaptecToken2`,
-   `zaptecEnergyForward2`), zodat de ketens elkaar niet overschrijven.
-4. Voeg een tweede **`victron-virtual`** node toe (elk krijgt automatisch een
-   eigen device-instance).
+1. Geef elke keten een andere charger-GUID.
+2. Gebruik **aparte context-sleutels** voor config, token en energieteller
+   (bijv. `zaptecCfg2`, `zaptecToken2`, `zaptecEnergyForward2`), zodat de ketens
+   elkaar niet overschrijven.
+3. Voeg per laadpaal een eigen **`victron-virtual`** node toe (elk krijgt
+   automatisch een eigen device-instance).
 
-> Tip: voor veel laadpalen per locatie is een subflow met een eigen scope
-> handiger. Dit basisflow is bewust eenvoudig gehouden voor het meest
-> voorkomende geval van één laadpaal per GX.
+> Tip: voor veel laadpalen per locatie is een subflow met een eigen scope handiger.
 
 ---
 
@@ -279,9 +262,12 @@ laadpaal of installatie gewijzigd.
 
 | Symptoom                              | Oorzaak / oplossing                                                        |
 |---------------------------------------|---------------------------------------------------------------------------|
-| Node-status `auth mislukt`            | Verkeerde `ZAPTEC_USERNAME`/`ZAPTEC_PASSWORD`.                             |
-| Node-status `charger-id ontbreekt`    | `ZAPTEC_CHARGER_ID` niet gezet; zoek de GUID via het hulp-tabblad.         |
+| Node-status `auth mislukt`            | Verkeerde gebruikersnaam/wachtwoord (VRM-formulier of env-variabele).      |
+| Status `wacht op VRM-configuratie`    | Nog niets ingevuld; vul het VRM-formulier in of zet de env-variabelen.     |
+| `charger-id ontbreekt`                | Charger Id (GUID) niet ingevuld; zoek hem via **"Toon mijn laadpalen"**.   |
 | `geen state ontvangen`                | Charger offline, of account heeft geen owner-rechten op de installatie.    |
+| Dashboard-tegel/formulier ontbreekt   | `@flowfuse/node-red-dashboard` niet geïnstalleerd, of flow niet gedeployed.|
+| "Unknown node" bij importeren         | Installeer eerst `@flowfuse/node-red-dashboard` via *Manage Palette*.      |
 | Meter verschijnt niet in de GX        | `node-red-contrib-victron` te oud, of device-type/rol niet ondersteund.    |
 | Energie loopt niet op                 | Configureer een persistent context store of vertrouw op OCMF (obs. 554).   |
 
