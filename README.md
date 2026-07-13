@@ -109,14 +109,23 @@ De volledige lijst met observatie-ID's staat in
 
 ## Installatie
 
+Er zijn twee kant-en-klare flows; kies er één:
+
+- [`flows.json`](./flows.json) – eenvoudig; configuratie via omgevingsvariabelen of
+  in de flow (Optie A/B hieronder).
+- [`flows-dashboard.json`](./flows-dashboard.json) – met **invulvelden in VRM**
+  (Optie C hieronder). Aanbevolen als de klant/medewerker zelf per installatie de
+  eigen inloggegevens invult. Vereist de palette `@flowfuse/node-red-dashboard`.
+
+Stappen:
+
 1. Open Node-RED op de GX (via VRM → *Venus OS Large* → Node-RED, of
    `http://<gx-ip>:1880`).
-2. Menu (rechtsboven) → **Import** → plak de inhoud van [`flows.json`](./flows.json)
-   → **Import**.
-3. Stel de credentials in (zie hieronder).
+2. Menu (rechtsboven) → **Import** → plak de inhoud van de gekozen flow → **Import**.
+3. Stel de credentials in (zie *Configuratie* hieronder).
 4. **Deploy**.
 
-Er verschijnen twee tabbladen:
+Bij `flows.json` verschijnen twee tabbladen:
 
 - **Zaptec -> Victron (laadpaal-meter)** – de eigenlijke integratie.
 - **Zaptec - chargers opzoeken** – hulpmiddel om de charger-GUID op te zoeken.
@@ -146,6 +155,43 @@ Zet op de GX de volgende variabelen (bijv. via de Node-RED `settings.js` onder
 Open de functie **`1. Config & token`** (tab *Zaptec -> Victron*) en de functie
 **`Auth-request bouwen`** (tab *chargers opzoeken*) en vervang de
 `VUL_...`-standaardwaarden door je eigen gegevens.
+
+### Optie C – Invulvelden in VRM (aanbevolen voor meerdere klanten)
+
+Gebruik [`flows-dashboard.json`](./flows-dashboard.json). Hiermee vult de
+**klant of een medewerker** de Zaptec-gebruikersnaam, het wachtwoord en de charger
+Id (GUID) in via een **formulier in VRM** — zonder de Node-RED editor of SSH.
+
+Waarom dit handig is voor jullie als installateur:
+
+- **Per installatie de eigen Zaptec-inloggegevens** in plaats van één centraal
+  account. Zo wordt het pollen verdeeld over meerdere accounts en loop je **niet
+  tegen poll-/rate-limieten** aan.
+- Configuratie gebeurt volledig **remote via VRM**; geen editor-toegang nodig voor
+  de eindgebruiker.
+
+**Zo werkt het** (bevestigd in de Venus OS Large-handleiding):
+
+1. Installeer in Node-RED (Manage Palette → Install) de package
+   **`@flowfuse/node-red-dashboard`** (Dashboard 2.0). Dit vereist tijdelijk
+   internettoegang op de GX.
+2. Importeer [`flows-dashboard.json`](./flows-dashboard.json) en **Deploy**.
+3. Na deploy verschijnt in VRM onder **Venus OS Large** een extra **dashboard-tegel**.
+   Open die.
+4. Klik op **"Toon mijn laadpalen"** om de laadpalen van het account te tonen
+   (naam + Id). Kopieer de juiste **Id (GUID)**.
+5. Vul **gebruikersnaam, wachtwoord en charger Id** in en klik **Opslaan**.
+6. De configuratie wordt opgeslagen in `/data/zaptec-config.json` (blijft behouden
+   na herstart) en de uitlezing start automatisch.
+
+De invoer wordt bewaard in de **global context** en in het bestand
+`/data/zaptec-config.json`. De uitlees-tab (*Zaptec -> Victron (uitlezen)*) gebruikt
+deze configuratie; is er nog niets ingevuld, dan wacht de flow gewoon af. Ook hier
+werken de omgevingsvariabelen uit Optie A nog als terugval.
+
+> Tip: het opslagbestand bevat het wachtwoord in leesbare vorm op de (lokale)
+> `/data`-partitie van de GX. Wil je dat vermijden, gebruik dan Optie A met
+> omgevingsvariabelen.
 
 ### Charger-GUID opzoeken
 
