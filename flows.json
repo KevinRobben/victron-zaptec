@@ -162,8 +162,8 @@
         "type": "function",
         "z": "f_dash",
         "name": "Config -> context",
-        "func": "// Opgeslagen config uit /data lezen en in global context zetten.\n// De inlogvelden worden BEWUST NIET voorinvuld; alleen de positie-keuze wordt hersteld.\nlet cfg = {};\ntry { cfg = JSON.parse(msg.payload); } catch (e) { cfg = {}; }\nif (cfg && typeof cfg === 'object' && Object.keys(cfg).length) {\n    global.set('zaptecCfg', cfg);\n    node.status({ fill: 'green', shape: 'dot', text: 'config geladen (velden leeg)' });\n    if (cfg.position !== undefined && cfg.position !== null && cfg.position !== '') {\n        return { payload: parseInt(cfg.position, 10) };\n    }\n}\nreturn null;\n",
-        "outputs": 1,
+        "func": "// Opgeslagen config uit /data lezen en in global context zetten.\n// De inlogvelden worden BEWUST NIET voorinvuld. Uitgang 1 = positie herstellen,\n// uitgang 2 = laadpalen automatisch ophalen (als inloggegevens bekend zijn).\nlet cfg = {};\ntry { cfg = JSON.parse(msg.payload); } catch (e) { cfg = {}; }\nlet posMsg = null;\nlet fetchMsg = null;\nif (cfg && typeof cfg === 'object' && Object.keys(cfg).length) {\n    global.set('zaptecCfg', cfg);\n    node.status({ fill: 'green', shape: 'dot', text: 'config geladen' });\n    if (cfg.position !== undefined && cfg.position !== null && cfg.position !== '') {\n        posMsg = { payload: parseInt(cfg.position, 10) };\n    }\n    if (cfg.username && cfg.password) {\n        fetchMsg = {};\n    }\n}\nreturn [posMsg, fetchMsg];\n",
+        "outputs": 2,
         "timeout": "",
         "noerr": 0,
         "initialize": "",
@@ -174,6 +174,9 @@
         "wires": [
             [
                 "d_pos"
+            ],
+            [
+                "d_fn_listauth"
             ]
         ]
     },
@@ -181,9 +184,9 @@
         "id": "d_form",
         "type": "ui-form",
         "z": "f_dash",
-        "name": "Zaptec inloggegevens",
+        "name": "Inloggegevens",
         "group": "ui_group",
-        "label": "Zaptec inloggegevens",
+        "label": "",
         "order": 1,
         "width": 0,
         "height": 0,
@@ -201,19 +204,12 @@
                 "type": "password",
                 "required": true,
                 "rows": null
-            },
-            {
-                "label": "Charger Id (GUID) - eerst leeg laten kan",
-                "key": "chargerId",
-                "type": "text",
-                "required": false,
-                "rows": null
             }
         ],
         "formValue": {},
         "payload": "",
-        "submit": "Opslaan",
-        "cancel": "Herstellen",
+        "submit": "Inloggegevens opslaan",
+        "cancel": "Wissen",
         "resetOnSubmit": false,
         "topic": "topic",
         "topicType": "msg",
@@ -221,7 +217,7 @@
         "className": "",
         "passthru": false,
         "dropdownOptions": [],
-        "x": 400,
+        "x": 380,
         "y": 180,
         "wires": [
             [
@@ -233,15 +229,15 @@
         "id": "d_fn_save",
         "type": "function",
         "z": "f_dash",
-        "name": "Config opslaan",
-        "func": "// Formulier opslaan -> global context + persistent bestand. Uitgang 1 = bestand, uitgang 2 = melding.\n// De charger-Id (GUID) is NIET verplicht bij opslaan, zodat je eerst kunt inloggen en\n// daarna via \"Toon mijn laadpalen\" de juiste Id kunt opzoeken.\nconst p = msg.payload || {};\nconst prev = global.get('zaptecCfg') || {};\nconst cfg = {\n    baseUrl: (p.baseUrl && String(p.baseUrl).trim()) || 'https://api.zaptec.com',\n    username: String(p.username || '').trim(),\n    password: String(p.password || ''),\n    chargerId: String(p.chargerId || '').trim()\n};\nif (!cfg.username || !cfg.password) {\n    node.status({ fill: 'red', shape: 'dot', text: 'vul gebruikersnaam + wachtwoord in' });\n    return [null, { payload: 'Vul minimaal gebruikersnaam en wachtwoord in.' }];\n}\n// Behoud eerder opgeslagen charger-Id / positie als die nu niet in het formulier zitten.\nif (!cfg.chargerId) cfg.chargerId = prev.chargerId || '';\nif (prev.position !== undefined) cfg.position = prev.position;\nglobal.set('zaptecCfg', cfg);\nglobal.set('zaptecToken', null);\nglobal.set('zaptecTokenExpiry', 0);\nnode.status({ fill: 'green', shape: 'dot', text: 'opgeslagen' });\nconst notif = cfg.chargerId\n    ? 'Configuratie opgeslagen. Het uitlezen start automatisch.'\n    : 'Inloggegevens opgeslagen. Klik nu \"Toon mijn laadpalen\" en vul daarna de Id in.';\nreturn [\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" },\n    { payload: notif }\n];\n",
-        "outputs": 2,
+        "name": "Inloggegevens opslaan",
+        "func": "// Inloggegevens opslaan -> global context + bestand, en meteen de laadpalen ophalen.\n// Uitgang 1 = bestand, uitgang 2 = melding, uitgang 3 = trigger laadpalen ophalen.\nconst p = msg.payload || {};\nconst prev = global.get('zaptecCfg') || {};\nconst cfg = {\n    baseUrl: (p.baseUrl && String(p.baseUrl).trim()) || 'https://api.zaptec.com',\n    username: String(p.username || '').trim(),\n    password: String(p.password || ''),\n    chargerId: prev.chargerId || ''\n};\nif (!cfg.username || !cfg.password) {\n    node.status({ fill: 'red', shape: 'dot', text: 'vul gebruikersnaam + wachtwoord in' });\n    return [null, { payload: 'Vul gebruikersnaam en wachtwoord in.' }, null];\n}\nif (prev.position !== undefined) cfg.position = prev.position;\nglobal.set('zaptecCfg', cfg);\nglobal.set('zaptecToken', null);\nglobal.set('zaptecTokenExpiry', 0);\nnode.status({ fill: 'green', shape: 'dot', text: 'opgeslagen' });\nreturn [\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" },\n    { payload: 'Inloggegevens opgeslagen. Laadpalen worden opgehaald...' },\n    {}\n];\n",
+        "outputs": 3,
         "timeout": "",
         "noerr": 0,
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 650,
+        "x": 620,
         "y": 180,
         "wires": [
             [
@@ -249,6 +245,9 @@
             ],
             [
                 "d_notif"
+            ],
+            [
+                "d_fn_listauth"
             ]
         ]
     },
@@ -264,9 +263,67 @@
         "overwriteFile": "true",
         "encoding": "utf8",
         "x": 900,
-        "y": 220,
+        "y": 120,
         "wires": [
             []
+        ]
+    },
+    {
+        "id": "d_charger",
+        "type": "ui-dropdown",
+        "z": "f_dash",
+        "group": "ui_group",
+        "name": "Laadpaal",
+        "label": "Gekoppelde laadpaal",
+        "tooltip": "",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "multiple": false,
+        "chips": false,
+        "clearable": false,
+        "options": [
+            {
+                "value": "",
+                "label": "(sla eerst inloggegevens op)"
+            }
+        ],
+        "payload": "",
+        "topic": "topic",
+        "topicType": "msg",
+        "className": "",
+        "typeIsComboBox": false,
+        "msgTrigger": "onChange",
+        "x": 380,
+        "y": 260,
+        "wires": [
+            [
+                "d_fn_charger_save"
+            ]
+        ]
+    },
+    {
+        "id": "d_fn_charger_save",
+        "type": "function",
+        "z": "f_dash",
+        "name": "Laadpaal opslaan",
+        "func": "// Gekozen laadpaal opslaan (global + bestand) + melding. Slaat over als er niets wijzigt.\nconst id = msg.payload;\nif (!id) { return null; }\nconst cfg = global.get('zaptecCfg') || {};\nif (cfg.chargerId === id) { return null; }\ncfg.chargerId = id;\nglobal.set('zaptecCfg', cfg);\nconst names = global.get('zaptecChargerNames') || {};\nnode.status({ fill: 'green', shape: 'dot', text: 'laadpaal ' + (names[id] || id) });\nreturn [\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" },\n    { payload: 'Laadpaal ingesteld op: ' + (names[id] || id) }\n];\n",
+        "outputs": 2,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 620,
+        "y": 260,
+        "wires": [
+            [
+                "d_file_out"
+            ],
+            [
+                "d_notif"
+            ]
         ]
     },
     {
@@ -277,7 +334,7 @@
         "name": "Positie",
         "label": "Positie van de laadpaal",
         "tooltip": "",
-        "order": 2,
+        "order": 3,
         "width": 0,
         "height": 0,
         "passthru": false,
@@ -302,8 +359,8 @@
         "className": "",
         "typeIsComboBox": false,
         "msgTrigger": "onChange",
-        "x": 400,
-        "y": 260,
+        "x": 380,
+        "y": 340,
         "wires": [
             [
                 "d_fn_possave"
@@ -322,53 +379,14 @@
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 650,
-        "y": 260,
+        "x": 620,
+        "y": 340,
         "wires": [
             [
                 "d_file_out"
             ],
             [
                 "d_notif"
-            ]
-        ]
-    },
-    {
-        "id": "d_btn",
-        "type": "ui-button",
-        "z": "f_dash",
-        "name": "Laadpalen ophalen",
-        "group": "ui_group",
-        "label": "Toon mijn laadpalen",
-        "order": 3,
-        "width": 0,
-        "height": 0,
-        "emulateClick": false,
-        "tooltip": "",
-        "color": "",
-        "bgcolor": "",
-        "className": "",
-        "icon": "",
-        "iconPosition": "left",
-        "payload": "",
-        "payloadType": "str",
-        "topic": "topic",
-        "topicType": "msg",
-        "buttonColor": "",
-        "textColor": "",
-        "iconColor": "",
-        "enableClick": true,
-        "enablePointerdown": false,
-        "pointerdownPayload": "",
-        "pointerdownPayloadType": "str",
-        "enablePointerup": false,
-        "pointerupPayload": "",
-        "pointerupPayloadType": "str",
-        "x": 150,
-        "y": 340,
-        "wires": [
-            [
-                "d_fn_listauth"
             ]
         ]
     },
@@ -385,7 +403,7 @@
         "finalize": "",
         "libs": [],
         "x": 370,
-        "y": 340,
+        "y": 440,
         "wires": [
             [
                 "d_tok"
@@ -412,7 +430,7 @@
         "senderr": true,
         "headers": [],
         "x": 590,
-        "y": 340,
+        "y": 440,
         "wires": [
             [
                 "d_fn_listreq"
@@ -432,7 +450,7 @@
         "finalize": "",
         "libs": [],
         "x": 790,
-        "y": 340,
+        "y": 440,
         "wires": [
             [
                 "d_list"
@@ -459,7 +477,7 @@
         "senderr": true,
         "headers": [],
         "x": 370,
-        "y": 400,
+        "y": 500,
         "wires": [
             [
                 "d_fn_listfmt"
@@ -470,50 +488,26 @@
         "id": "d_fn_listfmt",
         "type": "function",
         "z": "f_dash",
-        "name": "Lijst -> tabel",
-        "func": "// Uitgang 1 = tabelrijen (array), uitgang 2 = korte melding.\nconst code = msg.statusCode;\nif (code && code !== 200) {\n    node.status({ fill: 'red', shape: 'dot', text: 'fout ' + code });\n    return [{ payload: [] }, { payload: 'Fout bij ophalen laadpalen (HTTP ' + code + ').' }];\n}\nconst data = (msg.payload && Array.isArray(msg.payload.Data)) ? msg.payload.Data : [];\nconst rows = data.map(function (c) {\n    return { Naam: c.Name || '', 'Id (GUID)': c.Id || '', Online: c.IsOnline ? 'ja' : 'nee' };\n});\nnode.status({ fill: 'green', shape: 'dot', text: rows.length + ' laadpaal(en)' });\nreturn [\n    { payload: rows },\n    { payload: rows.length + ' laadpaal(en) gevonden. Gebruik de zoekbalk en kopieer de Id (GUID).' }\n];\n",
-        "outputs": 2,
+        "name": "Laadpalen -> dropdown",
+        "func": "// Vult de laadpaal-dropdown en kiest automatisch de actieve laadpaal.\n// Uitgang 1 = dropdown (opties + selectie), uitgang 2 = melding, uitgang 3 = bestand.\nconst code = msg.statusCode;\nif (code && code !== 200) {\n    node.status({ fill: 'red', shape: 'dot', text: 'fout ' + code });\n    return [null, { payload: 'Fout bij ophalen laadpalen (HTTP ' + code + ').' }, null];\n}\nconst data = (msg.payload && Array.isArray(msg.payload.Data)) ? msg.payload.Data : [];\nconst options = data.map(function (c) {\n    return { value: c.Id, label: (c.Name || '(naamloos)') + (c.IsOnline ? '' : ' - offline') };\n});\nconst names = {};\ndata.forEach(function (c) { names[c.Id] = c.Name || c.Id; });\nglobal.set('zaptecChargerNames', names);\n\nconst cfg = global.get('zaptecCfg') || {};\nconst ids = data.map(function (c) { return c.Id; });\nlet selected = cfg.chargerId;\nif (!selected || ids.indexOf(selected) === -1) {\n    selected = data.length ? data[0].Id : '';\n}\ncfg.chargerId = selected;\nglobal.set('zaptecCfg', cfg);\n\nnode.status({ fill: 'green', shape: 'dot', text: data.length + ' laadpaal(en)' });\nif (!data.length) {\n    return [\n        { options: [{ value: '', label: '(geen laadpalen gevonden)' }], payload: '' },\n        { payload: 'Geen laadpalen gevonden voor dit account.' },\n        null\n    ];\n}\nreturn [\n    { options: options, payload: selected },\n    { payload: data.length + ' laadpaal(en) gevonden. Actief: ' + (names[selected] || selected) },\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" }\n];\n",
+        "outputs": 3,
         "timeout": "",
         "noerr": 0,
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 590,
-        "y": 400,
+        "x": 600,
+        "y": 500,
         "wires": [
             [
-                "d_table"
+                "d_charger"
             ],
             [
                 "d_notif"
+            ],
+            [
+                "d_file_out"
             ]
-        ]
-    },
-    {
-        "id": "d_table",
-        "type": "ui-table",
-        "z": "f_dash",
-        "group": "ui_group",
-        "name": "Laadpalen",
-        "label": "Mijn laadpalen",
-        "order": 4,
-        "width": 0,
-        "height": 0,
-        "maxrows": 0,
-        "passthru": false,
-        "autocols": true,
-        "showSearch": true,
-        "deselect": true,
-        "selectionType": "none",
-        "columns": null,
-        "mobileBreakpoint": "sm",
-        "mobileBreakpointType": "defaults",
-        "action": "replace",
-        "className": "",
-        "x": 790,
-        "y": 400,
-        "wires": [
-            []
         ]
     },
     {
@@ -521,7 +515,7 @@
         "type": "ui-text",
         "z": "f_dash",
         "group": "ui_group",
-        "order": 5,
+        "order": 4,
         "width": 0,
         "height": 0,
         "name": "Status",
@@ -537,7 +531,7 @@
         "value": "payload",
         "valueType": "msg",
         "x": 380,
-        "y": 480,
+        "y": 580,
         "wires": []
     },
     {
@@ -549,7 +543,7 @@
             "p_status_out"
         ],
         "x": 175,
-        "y": 480,
+        "y": 580,
         "wires": [
             [
                 "d_status_txt"

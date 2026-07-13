@@ -126,7 +126,8 @@ Eén bestand: [`flows.json`](./flows.json).
 Er verschijnen twee tabbladen:
 
 - **Zaptec configuratie (VRM)** – het invulformulier (verschijnt als dashboard-tegel
-  in VRM) plus de knop *"Toon mijn laadpalen"* om de charger-GUID op te zoeken.
+  in VRM) met gebruikersnaam/wachtwoord, een dropdown met de gekoppelde laadpalen en
+  een dropdown voor de positie.
 - **Zaptec -> Victron (uitlezen)** – de eigenlijke integratie die de laadpaal
   read-only uitleest en als virtuele energiemeter toont.
 
@@ -141,7 +142,7 @@ Er verschijnen twee tabbladen:
 ### Optie A – Invulvelden in VRM (aanbevolen)
 
 De **klant of een medewerker** vult de Zaptec-gebruikersnaam, het wachtwoord en de
-charger Id (GUID) in via een **formulier in VRM** — zonder Node-RED editor of SSH.
+laadpaalkeuze in via een **formulier in VRM** — zonder Node-RED editor of SSH.
 
 Waarom dit handig is voor jullie als installateur:
 
@@ -156,24 +157,23 @@ Waarom dit handig is voor jullie als installateur:
 1. Zorg dat `@flowfuse/node-red-dashboard` is geïnstalleerd en de flow is gedeployed
    (zie *Installatie*).
 2. Open in VRM onder **Venus OS Large** de **dashboard-tegel**.
-3. Vul **gebruikersnaam en wachtwoord** in (de charger Id mag je nog leeg laten) en
-   klik **Opslaan**.
-4. Klik op **"Toon mijn laadpalen"**. De laadpalen van het account verschijnen in
-   een **doorzoekbare tabel** (naam + Id + online). Gebruik de zoekbalk (handig bij
-   veel laadpalen) en kopieer de juiste **Id (GUID)**.
-5. Plak de **Id (GUID)** in het veld en klik nogmaals **Opslaan**.
-6. Kies bij **"Positie van de laadpaal"** waar de lader in het systeem zit:
-   **AC-in** of **AC-uit**. De keuze wordt direct opgeslagen en toegepast.
-7. De configuratie wordt opgeslagen in `/data/zaptec-config.json` (blijft behouden
-   na herstart) en de uitlezing start automatisch.
+3. Vul **gebruikersnaam en wachtwoord** in en klik **"Inloggegevens opslaan"**.
+4. De laadpalen worden **automatisch opgehaald**. In de dropdown **"Gekoppelde
+   laadpaal"** wordt de eerst gevonden laadpaal automatisch geselecteerd en meteen
+   op de achtergrond gebruikt voor het uitlezen. Staat er meer dan één laadpaal op
+   het account, dan kies je hier eenvoudig de juiste.
+5. Kies bij **"Positie van de laadpaal"** waar de lader in het systeem zit:
+   **AC-in** (standaard) of **AC-uit**.
+6. Elke wijziging in een dropdown wordt **automatisch opgeslagen** en bevestigd met
+   een melding (toast). Alles wordt bewaard in `/data/zaptec-config.json` (blijft
+   behouden na herstart).
 
 > De inlogvelden zijn **standaard leeg** (worden niet automatisch voorinvuld). Ziet
 > je browser toch iets ingevuld staan (bijv. `admin`), dan komt dat van de
 > wachtwoord-/autofill-functie van de browser — overschrijf of wis dat gewoon.
 >
-> De charger Id is **niet verplicht bij de eerste keer opslaan**, juist zodat je
-> eerst kunt inloggen en daarna via *"Toon mijn laadpalen"* de juiste Id kunt
-> opzoeken. Zonder ingevulde Id wacht de uitlees-tab gewoon af.
+> Na een herstart worden de laadpalen automatisch opnieuw opgehaald (zolang de
+> inloggegevens bekend zijn), zodat de dropdown de actieve laadpaal blijft tonen.
 
 De invoer wordt bewaard in de **global context** en in het bestand
 `/data/zaptec-config.json`.
@@ -197,13 +197,12 @@ VRM-waarden hebben voorrang; ontbreken ze, dan gebruikt de flow deze variabelen:
 | `ZAPTEC_BASE_URL`    | nee       | `https://api.zaptec.com`  | API-basis-URL                        |
 | `ZAPTEC_METER_POSITION` | nee    | `1` (AC-in)               | Positie in het systeem: `1` = AC-in, `0` = AC-uit |
 
-### Charger-GUID opzoeken
+### Laadpaal kiezen
 
-De charger Id is de **GUID** (`Id`) van de laadpaal, niet de zichtbare naam of het
-serienummer. Klik in de VRM dashboard-tegel op **"Toon mijn laadpalen"**: je krijgt
-een **doorzoekbare tabel** met per laadpaal de naam, de **Id (GUID)** en of hij
-online is. Bij een installateursaccount met veel laadpalen kun je met de zoekbalk
-snel de juiste vinden. Kopieer de juiste `Id`.
+Je hoeft geen GUID meer op te zoeken of in te typen. Na *"Inloggegevens opslaan"*
+worden alle aan het account gekoppelde laadpalen opgehaald en getoond in de dropdown
+**"Gekoppelde laadpaal"** (op naam). De eerste wordt automatisch gekozen; selecteer
+desgewenst een andere. De keuze wordt direct opgeslagen en gebruikt.
 
 ### Poll-interval
 
@@ -280,7 +279,7 @@ laadpaal of installatie gewijzigd.
 | `auth mislukt (400)` / `inloggen mislukt (HTTP 400)` | Verkeerde gebruikersnaam/wachtwoord, **of** dit Zaptec-account heeft geen API-toegang/owner-rechten. Test dezelfde inloggegevens op <https://portal.zaptec.com>. |
 | `auth mislukt (401/403)`              | Account bestaat maar mag deze installatie/charger niet uitlezen (owner-rol nodig). |
 | Status `wacht op VRM-configuratie`    | Nog niets ingevuld; vul het VRM-formulier in of zet de env-variabelen.     |
-| `charger-id ontbreekt`                | Charger Id (GUID) niet ingevuld; zoek hem via **"Toon mijn laadpalen"**.   |
+| `charger-id ontbreekt`                | Nog geen laadpaal gekozen; sla inloggegevens op en kies er één in de dropdown. |
 | `geen state ontvangen`                | Charger offline, of account heeft geen owner-rechten op de installatie.    |
 | Dashboard-tegel/formulier ontbreekt   | `@flowfuse/node-red-dashboard` niet geïnstalleerd, of flow niet gedeployed.|
 | "Unknown node" bij importeren         | Installeer eerst `@flowfuse/node-red-dashboard` via *Manage Palette*.      |
