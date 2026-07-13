@@ -287,17 +287,12 @@
         "options": [
             {
                 "value": 1,
-                "label": "AC-in 1",
+                "label": "AC-in",
                 "type": "num"
             },
             {
                 "value": 0,
-                "label": "AC-uit 1 (off-grid)",
-                "type": "num"
-            },
-            {
-                "value": 2,
-                "label": "AC-uit 2",
+                "label": "AC-uit",
                 "type": "num"
             }
         ],
@@ -320,7 +315,7 @@
         "type": "function",
         "z": "f_dash",
         "name": "Positie opslaan",
-        "func": "// Gekozen positie opslaan (global context + persistent bestand). Uitgang 1 = bestand, 2 = melding.\nconst val = parseInt(msg.payload, 10);\nconst cfg = global.get('zaptecCfg') || {};\ncfg.position = isNaN(val) ? 1 : val;\nglobal.set('zaptecCfg', cfg);\nconst labels = { 0: 'AC-uit 1 (off-grid)', 1: 'AC-in 1', 2: 'AC-uit 2' };\nnode.status({ fill: 'green', shape: 'dot', text: 'positie ' + cfg.position });\nreturn [\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" },\n    { payload: 'Positie ingesteld op ' + (labels[cfg.position] || cfg.position) + '.' }\n];\n",
+        "func": "// Gekozen positie opslaan (global context + persistent bestand). Uitgang 1 = bestand, 2 = melding.\nconst val = parseInt(msg.payload, 10);\nconst cfg = global.get('zaptecCfg') || {};\ncfg.position = isNaN(val) ? 1 : val;\nglobal.set('zaptecCfg', cfg);\nconst labels = { 0: 'AC-uit', 1: 'AC-in' };\nnode.status({ fill: 'green', shape: 'dot', text: 'positie ' + cfg.position });\nreturn [\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" },\n    { payload: 'Positie ingesteld op ' + (labels[cfg.position] || cfg.position) + '.' }\n];\n",
         "outputs": 2,
         "timeout": "",
         "noerr": 0,

@@ -162,8 +162,7 @@ Waarom dit handig is voor jullie als installateur:
    (naam + Id). Kopieer de juiste **Id (GUID)**.
 5. Plak de **Id (GUID)** in het veld en klik nogmaals **Opslaan**.
 6. Kies bij **"Positie van de laadpaal"** waar de lader in het systeem zit:
-   **AC-in 1**, **AC-uit 1 (off-grid)** of **AC-uit 2**. De keuze wordt direct
-   opgeslagen en toegepast.
+   **AC-in** of **AC-uit**. De keuze wordt direct opgeslagen en toegepast.
 7. De configuratie wordt opgeslagen in `/data/zaptec-config.json` (blijft behouden
    na herstart) en de uitlezing start automatisch.
 
@@ -195,7 +194,7 @@ VRM-waarden hebben voorrang; ontbreken ze, dan gebruikt de flow deze variabelen:
 | `ZAPTEC_PASSWORD`    | ja        | –                         | Zaptec portal-wachtwoord             |
 | `ZAPTEC_CHARGER_ID`  | ja        | –                         | GUID (`Id`) van de laadpaal          |
 | `ZAPTEC_BASE_URL`    | nee       | `https://api.zaptec.com`  | API-basis-URL                        |
-| `ZAPTEC_METER_POSITION` | nee    | `1` (AC-in 1)             | Positie in het systeem: `0` = AC-uit, `1` = AC-in 1, `2` = AC-in 2 |
+| `ZAPTEC_METER_POSITION` | nee    | `1` (AC-in)               | Positie in het systeem: `1` = AC-in, `0` = AC-uit |
 
 ### Charger-GUID opzoeken
 
@@ -250,15 +249,13 @@ laadpaal of installatie gewijzigd.
   Voor een blijvende teller kun je in `settings.js` een *persistent context
   store* (bijv. `localfilesystem`) configureren, of vertrouwen op de OCMF-waarde
   (observatie 554) die Zaptec zelf bijhoudt.
-- **Positie (AC-in / AC-uit)**: standaard **AC-in 1** (`Position = 1`). Instelbaar
-  via het **VRM-formulier** (keuzemenu *Positie van de laadpaal*: AC-in 1 = `1`,
-  AC-uit 1 (off-grid) = `0`, AC-uit 2 = `2`) of via de env-variabele
-  `ZAPTEC_METER_POSITION`. Let op: `PositionIsAdjustable` van deze virtuele meter
-  staat op `0`, dus de positie is **niet** via de GX-GUI te wijzigen — dit gebeurt
-  uitsluitend via de flow/het formulier. In Venus OS 3.80 kan het voorkomen dat de
-  EVCS-widget de positie niet zichtbaar bijwerkt (bekend gedrag). Technisch
-  onderscheidt Victron voor een meter drie posities (AC-in 1 / AC-uit / AC-in 2);
-  de labels hierboven volgen jouw indeling.
+- **Positie (AC-in / AC-uit)**: standaard **AC-in** (`Position = 1`). Instelbaar via
+  het **VRM-formulier** (keuzemenu *Positie van de laadpaal*: AC-in = `1`,
+  AC-uit = `0`) of via de env-variabele `ZAPTEC_METER_POSITION`. Let op:
+  `PositionIsAdjustable` van deze virtuele meter staat op `0`, dus de positie is
+  **niet** via de GX-GUI te wijzigen — dit gebeurt uitsluitend via de flow/het
+  formulier. In Venus OS 3.80 kan het voorkomen dat de EVCS-widget de positie niet
+  zichtbaar bijwerkt (bekend gedrag).
 - **Alleen vermogen + energie zichtbaar**: zie de sectie *"Wat de virtuele
   energiemeter (rol EV charger) wél en niet toont"*. Sessie/laadstroom/laadtijd en
   per-fase-waarden worden door Venus OS 3.80 niet op de EVCS-pagina getoond.
