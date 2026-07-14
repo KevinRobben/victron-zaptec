@@ -4,6 +4,17 @@ Node-RED-applicatie die een **Zaptec laadpaal read-only** uitleest via de centra
 ZapCloud API en de meetwaarden in **Victron (Venus OS / VRM)** presenteert als een
 **energiemeter met de rol `EV charger`**.
 
+> **Meerdere integraties, dezelfde architectuur.** Naast Zaptec is er een
+> gescheiden **Viessmann warmtepomp**-integratie die op dezelfde manier werkt
+> (VRM-invulformulier + adaptief read-only uitlezen als virtuele Victron-meter).
+> Elke integratie is een aparte flow met eigen tabbladen, dashboard-tegel en
+> configuratiebestand:
+>
+> | Integratie | Flow-bestand | Documentatie |
+> |------------|--------------|--------------|
+> | Zaptec laadpaal | [`flows.json`](./flows.json) | dit document |
+> | Viessmann warmtepomp | [`viessmann-flows.json`](./viessmann-flows.json) | [`README-viessmann.md`](./README-viessmann.md) |
+
 Op de GX en in VRM verschijnt de laadpaal daardoor als een gemeten EV-lader
 (vermogen, stroom/spanning per fase en verbruikte energie). Er wordt **niets
 gestuurd** richting Zaptec: de integratie leest uitsluitend uit.
