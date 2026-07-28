@@ -1,0 +1,387 @@
+[
+  {
+    "id": "thermia_flow",
+    "type": "tab",
+    "label": "Thermia Calibra -> Victron",
+    "disabled": false,
+    "info": "Thermia Calibra Cool (Genesis) via Modbus TCP. Publiceert het opgenomen vermogen als virtuele AC Load en kan de tapwatertemperaturen tijdens de vijf goedkoopste uren verhogen."
+  },
+  {
+    "id": "thermia_info",
+    "type": "comment",
+    "z": "thermia_flow",
+    "name": "Lees THERMIA.md vóór inschakelen van schrijfbewerkingen",
+    "info": "Schrijven staat standaard uit. Controleer firmware/registerkaart, normale tapwaterwaarden en temperatuurgrenzen.",
+    "x": 290,
+    "y": 40,
+    "wires": []
+  },
+  {
+    "id": "thermia_poll",
+    "type": "inject",
+    "z": "thermia_flow",
+    "name": "Poll elke 15 seconden",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "15",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "3",
+    "topic": "",
+    "payload": "",
+    "payloadType": "date",
+    "x": 130,
+    "y": 120,
+    "wires": [
+      [
+        "thermia_make_reads"
+      ]
+    ]
+  },
+  {
+    "id": "thermia_make_reads",
+    "type": "function",
+    "z": "thermia_flow",
+    "name": "Maak Modbus-reads + prijstik",
+    "func": "// Genesis gebruikt zero-based adressen in Modbus-berichten.\n// Nieuwere firmware: 30159 = positie 158, direct verbruikt vermogen.\n// Oudere firmware: 30079..30081 = posities 78..80, externe meter per fase.\n// 40023/40024 = holding-registerposities 22/23, tapwater start/stop.\nconst unitid = Number(env.get('THERMIA_UNIT_ID') || 1);\nconst source = String(env.get('THERMIA_POWER_SOURCE') || 'unit').toLowerCase();\nconst power = source === 'meter' ? {\n    topic: 'thermia.power.meter',\n    payload: { fc: 4, unitid, address: 78, quantity: 3 }\n} : {\n    topic: 'thermia.power.unit',\n    payload: { fc: 4, unitid, address: 158, quantity: 1 }\n};\nconst settings = {\n    topic: 'thermia.settings',\n    payload: { fc: 3, unitid, address: 22, quantity: 2 }\n};\nreturn [[power, settings], { topic: 'thermia.price.tick', payload: Date.now() }];",
+    "outputs": 2,
+    "timeout": "",
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 390,
+    "y": 120,
+    "wires": [
+      [
+        "thermia_getter"
+      ],
+      [
+        "thermia_prices"
+      ]
+    ]
+  },
+  {
+    "id": "thermia_getter",
+    "type": "modbus-flex-getter",
+    "z": "thermia_flow",
+    "name": "Thermia Modbus lezen",
+    "showStatusActivities": false,
+    "showErrors": true,
+    "showWarnings": true,
+    "logIOActivities": false,
+    "server": "thermia_modbus",
+    "useIOFile": false,
+    "ioFile": "",
+    "useIOForPayload": false,
+    "emptyMsgOnFail": false,
+    "keepMsgProperties": true,
+    "delayOnStart": true,
+    "enableDeformedMessages": false,
+    "startDelayTime": "2",
+    "x": 670,
+    "y": 120,
+    "wires": [
+      [
+        "thermia_parse"
+      ],
+      [
+        "thermia_error"
+      ]
+    ]
+  },
+  {
+    "id": "thermia_parse",
+    "type": "function",
+    "z": "thermia_flow",
+    "name": "Decodeer Genesis-registers",
+    "func": "function registers(m) {\n    if (Array.isArray(m.payload)) return m.payload;\n    if (m.payload && Array.isArray(m.payload.data)) return m.payload.data;\n    if (m.responseBuffer && Array.isArray(m.responseBuffer.data)) return m.responseBuffer.data;\n    if (m.modbusResponse && Array.isArray(m.modbusResponse.data)) return m.modbusResponse.data;\n    return [];\n}\nfunction int16(v) {\n    v = Number(v) & 0xffff;\n    return v > 0x7fff ? v - 0x10000 : v;\n}\nconst data = registers(msg);\nif (msg.topic === 'thermia.power.unit') {\n    if (!data.length) {\n        node.error('Geen data voor register 30159 ontvangen', msg);\n        return [null, null];\n    }\n    // Registereenheid is 0,01 kW: raw * 10 = W.\n    const power = Math.max(0, int16(data[0]) * 10);\n    node.status({ fill: 'green', shape: 'dot', text: power.toFixed(0) + ' W (unit)' });\n    return [{ payload: { Connected: 1, 'Ac/Power': power } }, null];\n}\nif (msg.topic === 'thermia.power.meter') {\n    if (data.length < 3) {\n        node.error('Geen data voor registers 30079..30081 ontvangen', msg);\n        return [null, null];\n    }\n    const phases = data.slice(0, 3).map((v) => Math.max(0, int16(v)));\n    const power = phases.reduce((sum, value) => sum + value, 0);\n    node.status({ fill: 'green', shape: 'dot', text: power.toFixed(0) + ' W (meter)' });\n    return [{ payload: {\n        Connected: 1,\n        'Ac/Power': power,\n        'Ac/L1/Power': phases[0],\n        'Ac/L2/Power': phases[1],\n        'Ac/L3/Power': phases[2]\n    } }, null];\n}\nif (msg.topic === 'thermia.settings') {\n    if (data.length < 2) {\n        node.error('Geen data voor registers 40023/40024 ontvangen', msg);\n        return [null, null];\n    }\n    return [null, {\n        topic: 'thermia.settings',\n        payload: {\n            startC: int16(data[0]) / 100,\n            stopC: int16(data[1]) / 100,\n            readAt: Date.now()\n        }\n    }];\n}\nreturn [null, null];",
+    "outputs": 2,
+    "timeout": "",
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 930,
+    "y": 120,
+    "wires": [
+      [
+        "thermia_virtual"
+      ],
+      [
+        "thermia_control"
+      ]
+    ]
+  },
+  {
+    "id": "thermia_virtual",
+    "type": "victron-virtual",
+    "z": "thermia_flow",
+    "name": "Thermia warmtepomp",
+    "outputs": 1,
+    "device": "acload",
+    "default_values": true,
+    "acload_nrofphases": 3,
+    "acload_auto_energy": true,
+    "enable_s2support": false,
+    "s2_measurement_type": "3_PHASE_SYMMETRIC",
+    "battery_capacity": 25,
+    "include_battery_temperature": false,
+    "battery_voltage_preset": "24",
+    "battery_voltage_custom": 24,
+    "generator_type": "ac",
+    "generator_nrofphases": 1,
+    "include_engine_hours": false,
+    "include_starter_voltage": false,
+    "include_history_energy": false,
+    "grid_nrofphases": 1,
+    "include_motor_temp": false,
+    "include_controller_temp": false,
+    "include_coolant_temp": false,
+    "include_motor_rpm": true,
+    "include_motor_direction": true,
+    "position": 0,
+    "pvinverter_nrofphases": 1,
+    "switch_1_type": 1,
+    "switch_1_min": 0,
+    "switch_1_max": "",
+    "switch_1_initial": 0,
+    "switch_1_label": "",
+    "switch_1_unit": "",
+    "switch_1_step": 1,
+    "switch_1_customname": "",
+    "switch_1_group": "",
+    "switch_1_include_measurement": false,
+    "switch_1_rgb_color_wheel": false,
+    "switch_1_cct_wheel": false,
+    "switch_1_rgb_white_dimmer": false,
+    "fluid_type": 0,
+    "include_tank_battery": false,
+    "include_tank_temperature": false,
+    "tank_battery_voltage": 3.3,
+    "tank_capacity": 0.2,
+    "temperature_type": 2,
+    "include_humidity": false,
+    "include_pressure": false,
+    "include_temp_battery": false,
+    "temp_battery_voltage": 3.3,
+    "x": 1190,
+    "y": 80,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "thermia_price_link",
+    "type": "link in",
+    "z": "thermia_flow",
+    "name": "Dynamic ESS prijsdata (optioneel)",
+    "links": [],
+    "x": 125,
+    "y": 240,
+    "wires": [
+      [
+        "thermia_prices"
+      ]
+    ]
+  },
+  {
+    "id": "thermia_price_mqtt",
+    "type": "mqtt in",
+    "z": "thermia_flow",
+    "name": "Prijsdata via MQTT (optioneel)",
+    "topic": "thermia/day-ahead-prices",
+    "qos": "0",
+    "datatype": "json",
+    "broker": "thermia_mqtt",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 150,
+    "y": 280,
+    "wires": [
+      [
+        "thermia_prices"
+      ]
+    ]
+  },
+  {
+    "id": "thermia_prices",
+    "type": "function",
+    "z": "thermia_flow",
+    "name": "Bepaal 5 goedkoopste uren",
+    "func": "const cheapestCount = Math.max(1, Math.min(24, Number(env.get('THERMIA_CHEAPEST_HOURS') || 5)));\nconst maxAgeMin = Math.max(5, Number(env.get('THERMIA_PRICE_MAX_AGE_MIN') || 90));\nconst now = new Date();\n\nfunction numeric(v) {\n    const n = Number(v);\n    return Number.isFinite(n) ? n : null;\n}\nfunction fromDess(dess) {\n    const prices = dess && dess.output && dess.output.p_b;\n    if (!prices) return [];\n    return Object.keys(prices).map((key) => {\n        const hour = Number(key) % 24;\n        const start = new Date(now);\n        start.setHours(hour, 0, 0, 0);\n        return { start: start.getTime(), hour, price: numeric(prices[key]) };\n    }).filter((p) => p.price !== null && p.start >= new Date(now).setHours(0, 0, 0, 0) && p.start < new Date(now).setHours(24, 0, 0, 0));\n}\nfunction normalize(input) {\n    if (!input) return [];\n    if (input.output && input.output.p_b) return fromDess(input);\n    if (input.dess) return fromDess(input.dess);\n    if (input.records && Array.isArray(input.records.deGs)) {\n        return input.records.deGs.map((p) => ({ start: Number(p[0]), price: numeric(p[1]) }));\n    }\n    const list = Array.isArray(input) ? input : (input.prices || input.values || []);\n    return list.map((p, i) => {\n        if (typeof p === 'number') {\n            const start = new Date(now);\n            start.setHours(i, 0, 0, 0);\n            return { start: start.getTime(), price: p };\n        }\n        const rawStart = p.start ?? p.startTime ?? p.timestamp ?? p.time;\n        let start = typeof rawStart === 'number' ? rawStart : Date.parse(rawStart);\n        if (start > 0 && start < 100000000000) start *= 1000;\n        return { start, price: numeric(p.price ?? p.value ?? p.buyPrice) };\n    });\n}\n\nlet incoming = msg.topic !== 'thermia.price.tick' ? msg.payload : null;\nif (incoming) {\n    global.set('thermiaPrices', incoming);\n    global.set('thermiaPricesReceivedAt', Date.now());\n}\nconst source = incoming || global.get('thermiaPrices') || global.get('thermiaDess') || global.get('dess');\nconst receivedAt = Number(global.get('thermiaPricesReceivedAt') || Date.now());\nlet prices = normalize(source).filter((p) => Number.isFinite(p.start) && p.price !== null);\nconst dayStart = new Date(now); dayStart.setHours(0, 0, 0, 0);\nconst dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate() + 1);\nprices = prices.filter((p) => p.start >= dayStart.getTime() && p.start < dayEnd.getTime());\n\nif (prices.length < cheapestCount || Date.now() - receivedAt > maxAgeMin * 60000) {\n    node.status({ fill: 'yellow', shape: 'ring', text: 'geen verse volledige prijsreeks' });\n    return { topic: 'thermia.price.state', payload: { valid: false, cheap: false, evaluatedAt: Date.now() } };\n}\nconst cheapest = prices.slice().sort((a, b) => a.price - b.price || a.start - b.start).slice(0, cheapestCount);\nconst current = prices.find((p) => now.getTime() >= p.start && now.getTime() < p.start + 3600000);\nconst cheap = Boolean(current && cheapest.some((p) => p.start === current.start));\nconst hours = cheapest.map((p) => new Date(p.start).getHours()).sort((a, b) => a - b);\nnode.status({ fill: cheap ? 'green' : 'blue', shape: 'dot', text: (cheap ? 'goedkoop uur; ' : 'normaal; ') + hours.join(', ') });\nreturn {\n    topic: 'thermia.price.state',\n    payload: {\n        valid: true,\n        cheap,\n        currentPrice: current ? current.price : null,\n        cheapestHours: hours,\n        evaluatedAt: Date.now()\n    }\n};",
+    "outputs": 1,
+    "timeout": "",
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 420,
+    "y": 260,
+    "wires": [
+      [
+        "thermia_control"
+      ]
+    ]
+  },
+  {
+    "id": "thermia_control",
+    "type": "function",
+    "z": "thermia_flow",
+    "name": "Veilige tapwaterregeling",
+    "func": "function envNumber(name) {\n    const raw = env.get(name);\n    if (raw === undefined || raw === null || raw === '') return null;\n    const value = Number(raw);\n    return Number.isFinite(value) ? value : null;\n}\nconst enabled = String(env.get('THERMIA_ENABLE_WRITES') || 'false').toLowerCase() === 'true';\nconst delta = envNumber('THERMIA_CHEAP_DELTA_C') ?? 3;\nconst maxC = envNumber('THERMIA_MAX_TAPWATER_C') ?? 60;\nconst unitid = Number(env.get('THERMIA_UNIT_ID') || 1);\nlet baseStart = envNumber('THERMIA_TAPWATER_START_C');\nlet baseStop = envNumber('THERMIA_TAPWATER_STOP_C');\n\nif (msg.topic === 'thermia.price.state') {\n    context.set('priceState', msg.payload);\n    return null;\n}\nif (msg.topic !== 'thermia.settings') return null;\nconst actual = msg.payload;\nconst price = context.get('priceState') || { valid: false, cheap: false };\n\n// Zonder expliciete basiswaarden leren we alleen tijdens een aantoonbaar niet-goedkoop uur.\nif ((baseStart === null || baseStop === null) && price.valid && !price.cheap) {\n    context.set('learnedStart', actual.startC);\n    context.set('learnedStop', actual.stopC);\n}\nbaseStart = baseStart ?? context.get('learnedStart');\nbaseStop = baseStop ?? context.get('learnedStop');\n\nif (!enabled) {\n    node.status({ fill: 'grey', shape: 'ring', text: 'alleen lezen; schrijven uit' });\n    return null;\n}\nif (!Number.isFinite(baseStart) || !Number.isFinite(baseStop)) {\n    node.status({ fill: 'yellow', shape: 'ring', text: 'normale start/stop nog onbekend' });\n    return null;\n}\nif (baseStart < 20 || baseStop < baseStart || baseStop > maxC || delta < 0 || delta > 10) {\n    node.error('Onveilige Thermia-configuratie: controleer start/stop, delta en maximum', msg);\n    return null;\n}\nconst boost = price.valid && price.cheap ? delta : 0;\nconst targetStart = Math.min(maxC, baseStart + boost);\nconst targetStop = Math.min(maxC, baseStop + boost);\nif (targetStop < targetStart) {\n    node.error('Berekende stoptemperatuur ligt onder starttemperatuur', msg);\n    return null;\n}\nconst same = Math.abs(actual.startC - targetStart) < 0.005 && Math.abs(actual.stopC - targetStop) < 0.005;\nif (same) {\n    node.status({ fill: boost ? 'green' : 'blue', shape: 'dot', text: boost ? '+' + boost + ' °C actief' : 'normale waarden actief' });\n    return null;\n}\nconst lastWrite = Number(context.get('lastWrite') || 0);\nif (Date.now() - lastWrite < 60000) return null;\ncontext.set('lastWrite', Date.now());\nnode.status({ fill: 'yellow', shape: 'dot', text: 'schrijf ' + targetStart + '/' + targetStop + ' °C' });\nreturn {\n    topic: 'thermia.write.tapwater',\n    payload: {\n        value: [Math.round(targetStart * 100), Math.round(targetStop * 100)],\n        fc: 16,\n        unitid,\n        address: 22,\n        quantity: 2\n    }\n};",
+    "outputs": 1,
+    "timeout": "",
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 720,
+    "y": 260,
+    "wires": [
+      [
+        "thermia_writer"
+      ]
+    ]
+  },
+  {
+    "id": "thermia_writer",
+    "type": "modbus-flex-write",
+    "z": "thermia_flow",
+    "name": "Schrijf 40023/40024",
+    "showStatusActivities": false,
+    "showErrors": true,
+    "showWarnings": true,
+    "server": "thermia_modbus",
+    "emptyMsgOnFail": false,
+    "keepMsgProperties": true,
+    "delayOnStart": false,
+    "startDelayTime": "",
+    "x": 990,
+    "y": 260,
+    "wires": [
+      [
+        "thermia_write_debug"
+      ],
+      [
+        "thermia_error"
+      ]
+    ]
+  },
+  {
+    "id": "thermia_write_debug",
+    "type": "debug",
+    "z": "thermia_flow",
+    "name": "Tapwaterinstelling geschreven",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 1260,
+    "y": 240,
+    "wires": []
+  },
+  {
+    "id": "thermia_error",
+    "type": "debug",
+    "z": "thermia_flow",
+    "name": "Thermia Modbus fout",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "true",
+    "targetType": "full",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 1200,
+    "y": 320,
+    "wires": []
+  },
+  {
+    "id": "thermia_catch",
+    "type": "catch",
+    "z": "thermia_flow",
+    "name": "Vang Thermia-fouten",
+    "scope": [
+      "thermia_getter",
+      "thermia_parse",
+      "thermia_prices",
+      "thermia_control",
+      "thermia_writer"
+    ],
+    "uncaught": false,
+    "x": 920,
+    "y": 320,
+    "wires": [
+      [
+        "thermia_error"
+      ]
+    ]
+  },
+  {
+    "id": "thermia_modbus",
+    "type": "modbus-client",
+    "name": "Thermia Genesis",
+    "clienttype": "tcp",
+    "bufferCommands": true,
+    "stateLogEnabled": false,
+    "queueLogEnabled": false,
+    "failureLogEnabled": true,
+    "tcpHost": "${THERMIA_HOST}",
+    "tcpPort": "502",
+    "tcpType": "DEFAULT",
+    "serialPort": "/dev/ttyUSB",
+    "serialType": "RTU-BUFFERD",
+    "serialBaudrate": "9600",
+    "serialDatabits": "8",
+    "serialStopbits": "1",
+    "serialParity": "none",
+    "serialConnectionDelay": "100",
+    "serialAsciiResponseStartDelimiter": "0x3A",
+    "unit_id": 1,
+    "commandDelay": 20,
+    "clientTimeout": 2000,
+    "reconnectOnTimeout": true,
+    "reconnectTimeout": 5000,
+    "parallelUnitIdsAllowed": true,
+    "showErrors": true,
+    "showWarnings": true,
+    "showLogs": true
+  },
+  {
+    "id": "thermia_mqtt",
+    "type": "mqtt-broker",
+    "name": "Venus lokaal",
+    "broker": "127.0.0.1",
+    "port": "1883",
+    "clientid": "",
+    "autoConnect": true,
+    "usetls": false,
+    "protocolVersion": "4",
+    "keepalive": "60",
+    "cleansession": true,
+    "autoUnsubscribe": true,
+    "birthTopic": "",
+    "birthQos": "0",
+    "birthPayload": "",
+    "birthMsg": {},
+    "closeTopic": "",
+    "closeQos": "0",
+    "closePayload": "",
+    "closeMsg": {},
+    "willTopic": "",
+    "willQos": "0",
+    "willPayload": "",
+    "willMsg": {}
+  }
+]

@@ -13,6 +13,19 @@ account en alle Victron installaties onder één centraal Victron/VRM account. P
 locatie draait dit flow op de GX (Cerbo/Ecu) en toont daar de bijbehorende
 laadpaal.
 
+## Thermia Calibra Cool
+
+Deze repository bevat ook een losse flow voor de **Thermia Calibra Cool
+(Genesis-controller)** via Modbus TCP:
+
+- [`thermia-flows.json`](./thermia-flows.json) – importeerbare Node-RED-flow;
+- [`THERMIA.md`](./THERMIA.md) – registers, configuratie, Dynamic ESS-koppeling en
+  veilige ingebruikname.
+
+De Thermia-flow toont het opgenomen vermogen als virtuele AC Load in VRM. Optioneel
+verhoogt hij tijdens de vijf goedkoopste uren de tapwater-start- en
+stoptemperatuur. Schrijven is standaard uitgeschakeld.
+
 ---
 
 ## Hoe het werkt
