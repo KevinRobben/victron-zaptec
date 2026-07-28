@@ -19,13 +19,15 @@ Deze repository bevat ook een losse flow voor de **Thermia Calibra Cool
 (Genesis-controller)** via Modbus TCP:
 
 - [`thermia-flows.json`](./thermia-flows.json) – importeerbare Node-RED-flow;
-- [`THERMIA.md`](./THERMIA.md) – registers, configuratie, Dynamic ESS-koppeling en
+- [`THERMIA.md`](./THERMIA.md) – registers, configuratie, dynamische prijzen en
   veilige ingebruikname.
 
 De Thermia-flow toont het opgenomen vermogen als virtuele AC Load in VRM. Optioneel
 activeert hij tijdens de vijf goedkoopste uren Thermia **SG Ready Boost**, zonder
 de tapwater-setpoints direct te wijzigen. Alle installatie-instellingen staan in
 één duidelijk gemarkeerde configuratienode; schrijven is standaard uitgeschakeld.
+Nederlandse day-aheadprijzen worden zonder account of API-token automatisch
+opgehaald via de publieke Fraunhofer Energy-Charts API.
 
 ---
 

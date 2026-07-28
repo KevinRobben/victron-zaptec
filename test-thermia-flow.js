@@ -103,6 +103,33 @@ for (const node of flow) {
 }
 
 {
+  const { result } = runFunction('thermia_price_request', { payload: 1 })
+  assert.match(result.url, /^https:\/\/api\.energy-charts\.info\/price\?bzn=NL&start=\d{4}-\d{2}-\d{2}&end=\d{4}-\d{2}-\d{2}$/)
+  assert.equal(result.method, 'GET')
+  assert.equal('payload' in result, false)
+}
+
+{
+  const start = 1800000000
+  const unixSeconds = []
+  const quarterPrices = []
+  for (let hour = 0; hour < 5; hour++) {
+    for (let quarter = 0; quarter < 4; quarter++) {
+      unixSeconds.push(start + hour * 3600 + quarter * 900)
+      quarterPrices.push(100 + hour * 10)
+    }
+  }
+  const { result, errors } = runFunction('thermia_price_parse', {
+    statusCode: 200,
+    payload: { unix_seconds: unixSeconds, price: quarterPrices }
+  })
+  assert.equal(result.payload.length, 5)
+  assert.equal(result.payload[0].price, 0.1)
+  assert.equal(result.payload[4].price, 0.14)
+  assert.equal(errors.length, 0)
+}
+
+{
   const hour = new Date().getHours()
   const prices = Object.fromEntries(Array.from({ length: 24 }, (_, index) => [
     index,

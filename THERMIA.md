@@ -40,7 +40,8 @@ registerkaart die bij de geïnstalleerde controllerfirmware hoort.
 - een recente `node-red-contrib-victron` met Virtual AC Load;
 - de palette `node-red-contrib-modbus`;
 - Modbus TCP/IP ingeschakeld onder **Settings → BMS** op het Thermia-display;
-- bereikbaarheid van de display-unit op TCP-poort 502.
+- bereikbaarheid van de display-unit op TCP-poort 502;
+- internettoegang vanaf de GX naar `api.energy-charts.info`.
 
 Installeer `node-red-contrib-modbus` via **Manage Palette → Install**. Importeer
 daarna `thermia-flows.json`.
@@ -71,24 +72,33 @@ De flow schrijft waarde `3` (Boost) tijdens goedkope uren en waarde `0` (Normal)
 daarbuiten naar `40125`. De tapwater-start- en stoptemperaturen worden niet
 gewijzigd.
 
-## Dynamic ESS-prijzen koppelen
+## Dynamische prijzen
 
-Venus OS zelf is prijsagnostisch: de VRM-versie van Dynamic ESS publiceert de
-uurprijzen niet als lokaal D-Bus- of MQTT-pad. De flow kan ze daarom niet
-rechtstreeks uit `com.victronenergy.system` lezen.
+De flow haalt de Nederlandse day-ahead beursprijzen volledig automatisch op. Er
+is geen account, API-token, leverancier of Dynamic ESS-configuratie nodig.
 
-Er zijn drie ondersteunde koppelingen:
+EPEX SPOT heeft geen vrije publieke API. De officiële MATS/EEX-feed vereist een
+betaald datacontract; rechtstreeks de EPEX-website scrapen is instabiel en de
+gebruiksvoorwaarden beperken geautomatiseerd hergebruik. Daarom gebruikt de flow
+de publieke **Fraunhofer Energy-Charts API** voor biedzone `NL`. Deze levert
+dezelfde day-ahead marktprijzen onder CC BY 4.0.
 
-1. **Dynamic ESS Node-RED-flow**  
-   Maak na een prijsupdate een Change-node:
-   - zet `msg.payload` op `flow.dess`;
-   - verbind deze met **Dynamic ESS prijsdata (optioneel)**, of sla de waarde op
-     als `global.thermiaDess`.
+De flow:
 
-   De officiële Dynamic ESS-structuur `dess.output.p_b` wordt direct herkend.
+1. haalt bij het starten en daarna elke 30 minuten de prijzen op;
+2. zet `EUR/MWh` om naar `EUR/kWh`;
+3. middelt de 15-minutenprijzen naar uurprijzen;
+4. kiest de vijf goedkoopste uren van de lokale kalenderdag.
 
-2. **MQTT**  
-   Publiceer een JSON-array retained op `thermia/day-ahead-prices`:
+De prijzen worden na publicatie vanzelf vernieuwd. Bij een API-storing blijft de
+laatste geldige reeks maximaal 90 minuten bruikbaar. Daarna wordt Boost veilig
+opgeheven en SG Ready `Normal` gevraagd.
+
+### Optionele eigen prijsbron
+
+De automatische feed is de standaard. Desgewenst kan een bestaande Dynamic
+ESS-flow nog steeds op **Dynamic ESS prijsdata (optioneel)** worden aangesloten,
+of kan een JSON-array retained op `thermia/day-ahead-prices` worden gepubliceerd:
 
    ```json
    [
@@ -97,15 +107,9 @@ Er zijn drie ondersteunde koppelingen:
    ]
    ```
 
-   Lever alle 24 uren van de dag. Numerieke Unix-timestamps in seconden of
-   milliseconden worden eveneens geaccepteerd.
-
-3. **Global context**  
-   Zet een van bovenstaande objecten in `global.thermiaPrices`.
-
-De vijf laagste prijzen worden over de **lokale kalenderdag van de GX** gekozen.
-Bij ontbrekende, onvolledige of te oude prijsdata wordt Boost opgeheven en
-`Normal` gevraagd.
+Lever alle uren van de dag. Numerieke Unix-timestamps in seconden of milliseconden
+worden eveneens geaccepteerd. Een handmatig aangeleverde reeks vervangt de
+automatisch opgehaalde reeks tot de volgende automatische update.
 
 ## Veilig inschakelen
 
@@ -116,7 +120,8 @@ Bij ontbrekende, onvolledige of te oude prijsdata wordt Boost opgeheven en
    **SG-Ready** is geconfigureerd, niet als `PL/LU`.
 4. Controleer dat register `40125` leesbaar is en `30083` normaal waarde `4`
    rapporteert.
-5. Koppel de prijsreeks en controleer de status onder **Bepaal 5 goedkoopste uren**.
+5. Controleer de groene status bij **Energy-Charts prijzen (NL)** en
+   **Bepaal 5 goedkoopste uren**.
 6. Zet pas daarna `enableWrites: true`.
 
 De flow schrijft `40125` met Modbus FC6 en maximaal eenmaal per minuut. De volgende
@@ -139,3 +144,5 @@ beveiligingen niet.
   Calibra RXT and Diplomat Inverter – Genesis platform 17.1*.
 - Victron Energy, `node-red-contrib-victron` Virtual Devices.
 - Victron Energy, Dynamic ESS Node-RED-referentieflow.
+- Fraunhofer ISE Energy-Charts API, Nederlandse day-aheadprijzen
+  (`api.energy-charts.info`, CC BY 4.0).

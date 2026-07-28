@@ -238,6 +238,95 @@
     ]
   },
   {
+    "id": "thermia_price_fetch_tick",
+    "type": "inject",
+    "z": "thermia_flow",
+    "name": "Haal prijzen automatisch op",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "1800",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "1",
+    "topic": "",
+    "payload": "",
+    "payloadType": "date",
+    "x": 150,
+    "y": 200,
+    "wires": [
+      [
+        "thermia_price_request"
+      ]
+    ]
+  },
+  {
+    "id": "thermia_price_request",
+    "type": "function",
+    "z": "thermia_flow",
+    "name": "Nederlandse day-ahead URL",
+    "func": "const now = new Date();\nconst y = now.getFullYear();\nconst m = String(now.getMonth() + 1).padStart(2, '0');\nconst d = String(now.getDate()).padStart(2, '0');\nconst date = y + '-' + m + '-' + d;\nmsg.method = 'GET';\nmsg.url = 'https://api.energy-charts.info/price?bzn=NL&start=' +\n    date + '&end=' + date;\ndelete msg.payload;\nreturn msg;",
+    "outputs": 1,
+    "timeout": "",
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 410,
+    "y": 200,
+    "wires": [
+      [
+        "thermia_price_http"
+      ]
+    ]
+  },
+  {
+    "id": "thermia_price_http",
+    "type": "http request",
+    "z": "thermia_flow",
+    "name": "Energy-Charts prijzen (NL)",
+    "method": "use",
+    "ret": "obj",
+    "paytoqs": "ignore",
+    "url": "",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "insecureHTTPParser": false,
+    "authType": "",
+    "senderr": true,
+    "headers": [],
+    "x": 680,
+    "y": 200,
+    "wires": [
+      [
+        "thermia_price_parse"
+      ]
+    ]
+  },
+  {
+    "id": "thermia_price_parse",
+    "type": "function",
+    "z": "thermia_flow",
+    "name": "Kwartieren → uurprijzen",
+    "func": "const body = msg.payload || {};\nif (msg.statusCode !== 200 || !Array.isArray(body.unix_seconds) ||\n    !Array.isArray(body.price) || body.unix_seconds.length !== body.price.length) {\n    node.status({ fill: 'red', shape: 'ring', text: 'prijsfeed niet beschikbaar' });\n    node.error('Energy-Charts prijsfeed ongeldig (HTTP ' +\n        (msg.statusCode || '?') + ')', msg);\n    return null;\n}\nconst hours = new Map();\nfor (let i = 0; i < body.price.length; i++) {\n    const timestamp = Number(body.unix_seconds[i]) * 1000;\n    const price = Number(body.price[i]);\n    if (!Number.isFinite(timestamp) || !Number.isFinite(price)) continue;\n    const hour = Math.floor(timestamp / 3600000) * 3600000;\n    const values = hours.get(hour) || [];\n    values.push(price);\n    hours.set(hour, values);\n}\nconst prices = Array.from(hours, ([start, values]) => ({\n    start,\n    price: values.reduce((sum, value) => sum + value, 0) /\n        values.length / 1000\n})).sort((a, b) => a.start - b.start);\nif (prices.length < 5) {\n    node.error('Minder dan vijf volledige uurprijzen ontvangen', msg);\n    return null;\n}\nnode.status({ fill: 'green', shape: 'dot', text: prices.length + ' uurprijzen' });\nreturn {\n    topic: 'energy-charts.nl',\n    payload: prices,\n    priceSource: 'Energy-Charts / SMARD, CC BY 4.0'\n};",
+    "outputs": 1,
+    "timeout": "",
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 950,
+    "y": 200,
+    "wires": [
+      [
+        "thermia_prices"
+      ]
+    ]
+  },
+  {
     "id": "thermia_price_link",
     "type": "link in",
     "z": "thermia_flow",
@@ -378,6 +467,9 @@
     "scope": [
       "thermia_getter",
       "thermia_parse",
+      "thermia_price_request",
+      "thermia_price_http",
+      "thermia_price_parse",
       "thermia_prices",
       "thermia_control",
       "thermia_writer"
