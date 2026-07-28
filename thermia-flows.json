@@ -10,11 +10,74 @@
     "id": "thermia_info",
     "type": "comment",
     "z": "thermia_flow",
-    "name": "Lees THERMIA.md vóór inschakelen van schrijfbewerkingen",
-    "info": "Schrijven staat standaard uit. Controleer firmware/registerkaart, normale tapwaterwaarden en temperatuurgrenzen.",
+    "name": "1. Dubbelklik CONFIGURATIE en vul de waarden in",
+    "info": "Alle installatie-instellingen staan in één Function-node. Schrijven staat standaard uit.",
     "x": 290,
     "y": 40,
     "wires": []
+  },
+  {
+    "id": "thermia_config_start",
+    "type": "inject",
+    "z": "thermia_flow",
+    "name": "Laad configuratie",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "0.2",
+    "topic": "",
+    "payload": "",
+    "payloadType": "date",
+    "x": 120,
+    "y": 80,
+    "wires": [
+      [
+        "thermia_config"
+      ]
+    ]
+  },
+  {
+    "id": "thermia_config",
+    "type": "function",
+    "z": "thermia_flow",
+    "name": "CONFIGURATIE — DUBBELKLIK",
+    "func": "// =====================================================\n// VUL ALLEEN DE WAARDEN IN DIT BLOK IN\n// =====================================================\nconst config = {\n    host: '192.168.1.50', // IP-adres Thermia-display\n    port: 502,\n    unitId: 1,\n    powerSource: 'unit',  // 'unit' of 'meter'\n    enableWrites: false   // pas op true na SG-Ready-controle\n};\n// =====================================================\n\nconfig.host = String(config.host || '').trim();\nconfig.port = Number(config.port);\nconfig.unitId = Number(config.unitId);\nconfig.powerSource = String(config.powerSource).toLowerCase();\nconst valid = config.host && Number.isInteger(config.port) &&\n    config.port > 0 && config.port <= 65535 &&\n    Number.isInteger(config.unitId) && config.unitId >= 0 &&\n    config.unitId <= 255 && ['unit', 'meter'].includes(config.powerSource);\nif (!valid) {\n    node.error('Ongeldige Thermia-configuratie');\n    node.status({ fill: 'red', shape: 'ring', text: 'configuratie ongeldig' });\n    return null;\n}\nflow.set('thermiaConfig', config);\nnode.status({\n    fill: config.enableWrites ? 'yellow' : 'green',\n    shape: 'dot',\n    text: config.host + ':' + config.port +\n        (config.enableWrites ? ' — SG schrijven AAN' : ' — alleen lezen')\n});\nreturn { payload: {\n    connectorType: 'TCP', tcpHost: config.host,\n    tcpPort: String(config.port), tcpType: 'DEFAULT', unitId: config.unitId\n} };",
+    "outputs": 1,
+    "timeout": "",
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 390,
+    "y": 80,
+    "wires": [
+      [
+        "thermia_connector"
+      ]
+    ]
+  },
+  {
+    "id": "thermia_connector",
+    "type": "modbus-flex-connector",
+    "z": "thermia_flow",
+    "name": "Pas Modbus-verbinding toe",
+    "maxReconnectsPerMinute": 4,
+    "emptyQueue": true,
+    "showStatusActivities": false,
+    "showErrors": true,
+    "server": "thermia_modbus",
+    "emptyMsgOnFail": false,
+    "configMsgOnChange": false,
+    "x": 690,
+    "y": 80,
+    "wires": [
+      []
+    ]
   },
   {
     "id": "thermia_poll",
@@ -46,7 +109,7 @@
     "type": "function",
     "z": "thermia_flow",
     "name": "Maak Modbus-reads + prijstik",
-    "func": "// Genesis gebruikt zero-based adressen in Modbus-berichten.\n// Nieuwere firmware: 30159 = positie 158, direct verbruikt vermogen.\n// Oudere firmware: 30079..30081 = posities 78..80, externe meter per fase.\n// 40125 = positie 124, gewenste SG Ready-modus (0 normaal, 3 boost).\n// 30083 = positie 82, werkelijk actieve Smart Grid-modus.\nconst unitid = Number(env.get('THERMIA_UNIT_ID') || 1);\nconst source = String(env.get('THERMIA_POWER_SOURCE') || 'unit').toLowerCase();\nconst power = source === 'meter' ? {\n    topic: 'thermia.power.meter',\n    payload: { fc: 4, unitid, address: 78, quantity: 3 }\n} : {\n    topic: 'thermia.power.unit',\n    payload: { fc: 4, unitid, address: 158, quantity: 1 }\n};\nconst desired = {\n    topic: 'thermia.sg.desired',\n    payload: { fc: 3, unitid, address: 124, quantity: 1 }\n};\nconst active = {\n    topic: 'thermia.sg.active',\n    payload: { fc: 4, unitid, address: 82, quantity: 1 }\n};\nreturn [[power, desired, active], { topic: 'thermia.price.tick', payload: Date.now() }];",
+    "func": "// Genesis gebruikt zero-based adressen in Modbus-berichten.\n// 30159: direct verbruik; 30079..81: externe meter.\n// 40125: gewenste SG-modus; 30083: actieve SG-modus.\nconst config = flow.get('thermiaConfig');\nif (!config) {\n    node.status({ fill: 'yellow', shape: 'ring', text: 'wacht op configuratie' });\n    return [null, null];\n}\nconst unitid = config.unitId;\nconst power = config.powerSource === 'meter' ? {\n    topic: 'thermia.power.meter',\n    payload: { fc: 4, unitid, address: 78, quantity: 3 }\n} : {\n    topic: 'thermia.power.unit',\n    payload: { fc: 4, unitid, address: 158, quantity: 1 }\n};\nconst desired = {\n    topic: 'thermia.sg.desired',\n    payload: { fc: 3, unitid, address: 124, quantity: 1 }\n};\nconst active = {\n    topic: 'thermia.sg.active',\n    payload: { fc: 4, unitid, address: 82, quantity: 1 }\n};\nreturn [[power, desired, active],\n    { topic: 'thermia.price.tick', payload: Date.now() }];",
     "outputs": 2,
     "timeout": "",
     "noerr": 0,
@@ -234,7 +297,7 @@
     "type": "function",
     "z": "thermia_flow",
     "name": "Veilige SG Ready-regeling",
-    "func": "const enabled = String(env.get('THERMIA_ENABLE_WRITES') || 'false').toLowerCase() === 'true';\nconst unitid = Number(env.get('THERMIA_UNIT_ID') || 1);\n\nif (msg.topic === 'thermia.price.state') {\n    context.set('priceState', msg.payload);\n    return null;\n}\nif (msg.topic !== 'thermia.sg.desired') return null;\nconst desiredMode = Number(msg.payload.mode);\nconst price = context.get('priceState') || { valid: false, cheap: false };\n\nif (!enabled) {\n    node.status({ fill: 'grey', shape: 'ring', text: 'alleen lezen; SG schrijven uit' });\n    return null;\n}\n// Bij ongeldige of verouderde prijzen wordt Boost altijd opgeheven.\nconst targetMode = price.valid && price.cheap ? 3 : 0;\nif (desiredMode === targetMode) {\n    node.status({ fill: targetMode === 3 ? 'green' : 'blue', shape: 'dot', text: targetMode === 3 ? 'SG Boost gevraagd' : 'SG normaal' });\n    return null;\n}\nconst lastWrite = Number(context.get('lastWrite') || 0);\nif (Date.now() - lastWrite < 60000) return null;\ncontext.set('lastWrite', Date.now());\nnode.status({ fill: 'yellow', shape: 'dot', text: targetMode === 3 ? 'activeer SG Boost' : 'herstel SG normaal' });\nreturn {\n    topic: 'thermia.write.sg-ready',\n    payload: {\n        value: targetMode,\n        fc: 6,\n        unitid,\n        address: 124,\n        quantity: 1\n    }\n};",
+    "func": "const config = flow.get('thermiaConfig');\nif (!config) return null;\n\nif (msg.topic === 'thermia.price.state') {\n    context.set('priceState', msg.payload);\n    return null;\n}\nif (msg.topic !== 'thermia.sg.desired') return null;\nconst desiredMode = Number(msg.payload.mode);\nconst price = context.get('priceState') || { valid: false, cheap: false };\n\nif (!config.enableWrites) {\n    node.status({ fill: 'grey', shape: 'ring', text: 'alleen lezen; SG schrijven uit' });\n    return null;\n}\n// Bij ongeldige of verouderde prijzen wordt Boost altijd opgeheven.\nconst targetMode = price.valid && price.cheap ? 3 : 0;\nif (desiredMode === targetMode) {\n    node.status({\n        fill: targetMode === 3 ? 'green' : 'blue', shape: 'dot',\n        text: targetMode === 3 ? 'SG Boost gevraagd' : 'SG normaal'\n    });\n    return null;\n}\nconst lastWrite = Number(context.get('lastWrite') || 0);\nif (Date.now() - lastWrite < 60000) return null;\ncontext.set('lastWrite', Date.now());\nnode.status({\n    fill: 'yellow', shape: 'dot',\n    text: targetMode === 3 ? 'activeer SG Boost' : 'herstel SG normaal'\n});\nreturn {\n    topic: 'thermia.write.sg-ready',\n    payload: {\n        value: targetMode, fc: 6, unitid: config.unitId,\n        address: 124, quantity: 1\n    }\n};",
     "outputs": 1,
     "timeout": "",
     "noerr": 0,
@@ -337,7 +400,7 @@
     "stateLogEnabled": false,
     "queueLogEnabled": false,
     "failureLogEnabled": true,
-    "tcpHost": "${THERMIA_HOST}",
+    "tcpHost": "127.0.0.1",
     "tcpPort": "502",
     "tcpType": "DEFAULT",
     "serialPort": "/dev/ttyUSB",

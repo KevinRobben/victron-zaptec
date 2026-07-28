@@ -24,7 +24,8 @@ Deze repository bevat ook een losse flow voor de **Thermia Calibra Cool
 
 De Thermia-flow toont het opgenomen vermogen als virtuele AC Load in VRM. Optioneel
 activeert hij tijdens de vijf goedkoopste uren Thermia **SG Ready Boost**, zonder
-de tapwater-setpoints direct te wijzigen. Schrijven is standaard uitgeschakeld.
+de tapwater-setpoints direct te wijzigen. Alle installatie-instellingen staan in
+één duidelijk gemarkeerde configuratienode; schrijven is standaard uitgeschakeld.
 
 ---
 

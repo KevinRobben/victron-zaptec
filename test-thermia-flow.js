@@ -24,15 +24,17 @@ function runFunction (id, msg, options = {}) {
   const env = { get: (key) => envValues[key] }
   const context = options.context || store()
   const globals = options.globals || store()
+  const flowContext = options.flow || store()
   const node = {
     status: (value) => statuses.push(value),
     error: (error) => errors.push(error)
   }
-  const fn = new Function('msg', 'env', 'context', 'global', 'node', nodeDef.func)
+  const fn = new Function('msg', 'env', 'context', 'global', 'flow', 'node', nodeDef.func)
   return {
-    result: fn(msg, env, context, globals, node),
+    result: fn(msg, env, context, globals, flowContext, node),
     context,
     globals,
+    flow: flowContext,
     statuses,
     errors
   }
@@ -48,8 +50,24 @@ for (const node of flow) {
 }
 
 {
+  const flowContext = store()
+  const { result } = runFunction('thermia_config', {}, { flow: flowContext })
+  assert.equal(flowContext.get('thermiaConfig').host, '192.168.1.50')
+  assert.deepEqual(result.payload, {
+    connectorType: 'TCP',
+    tcpHost: '192.168.1.50',
+    tcpPort: '502',
+    tcpType: 'DEFAULT',
+    unitId: 1
+  })
+}
+
+{
+  const flowContext = store({
+    thermiaConfig: { unitId: 7, powerSource: 'unit', enableWrites: false }
+  })
   const { result } = runFunction('thermia_make_reads', {}, {
-    env: { THERMIA_UNIT_ID: '7', THERMIA_POWER_SOURCE: 'unit' }
+    flow: flowContext
   })
   assert.deepEqual(result[0][0].payload, { fc: 4, unitid: 7, address: 158, quantity: 1 })
   assert.deepEqual(result[0][1].payload, { fc: 3, unitid: 7, address: 124, quantity: 1 })
@@ -57,8 +75,11 @@ for (const node of flow) {
 }
 
 {
+  const flowContext = store({
+    thermiaConfig: { unitId: 1, powerSource: 'meter', enableWrites: false }
+  })
   const { result } = runFunction('thermia_make_reads', {}, {
-    env: { THERMIA_POWER_SOURCE: 'meter' }
+    flow: flowContext
   })
   assert.deepEqual(result[0][0].payload, { fc: 4, unitid: 1, address: 78, quantity: 3 })
 }
@@ -99,15 +120,17 @@ for (const node of flow) {
 
 {
   const context = store()
-  const env = { THERMIA_ENABLE_WRITES: 'true' }
+  const flowContext = store({
+    thermiaConfig: { unitId: 1, powerSource: 'unit', enableWrites: true }
+  })
   runFunction('thermia_control', {
     topic: 'thermia.price.state',
     payload: { valid: true, cheap: true }
-  }, { context, env })
+  }, { context, flow: flowContext })
   const { result } = runFunction('thermia_control', {
     topic: 'thermia.sg.desired',
     payload: { mode: 0 }
-  }, { context, env })
+  }, { context, flow: flowContext })
   assert.deepEqual(result.payload, {
     value: 3,
     fc: 6,
@@ -122,7 +145,9 @@ for (const node of flow) {
     topic: 'thermia.sg.desired',
     payload: { mode: 0 }
   }, {
-    env: { THERMIA_ENABLE_WRITES: 'false' }
+    flow: store({
+      thermiaConfig: { unitId: 1, powerSource: 'unit', enableWrites: false }
+    })
   })
   assert.equal(result, null)
 }
@@ -134,7 +159,9 @@ for (const node of flow) {
     payload: { mode: 3 }
   }, {
     context,
-    env: { THERMIA_ENABLE_WRITES: 'true' }
+    flow: store({
+      thermiaConfig: { unitId: 1, powerSource: 'unit', enableWrites: true }
+    })
   })
   assert.equal(result.payload.value, 0, 'ongeldige prijsdata moet Boost opheffen')
 }

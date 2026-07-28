@@ -30,8 +30,8 @@ Register `30158` is het **afgegeven thermische vermogen** en is dus nadrukkelijk
 niet geschikt om het stroomverbruik in VRM te tonen. De flow gebruikt `30159`.
 
 `30159` is toegevoegd in nieuwere Genesis-registerkaarten. Kies bij oudere
-firmware `THERMIA_POWER_SOURCE=meter`; daarvoor moeten de stroombegrenzingsmodule
-en de bijbehorende energiemeting van Thermia aanwezig zijn. Controleer altijd de
+firmware `powerSource: 'meter'`; daarvoor moeten de stroombegrenzingsmodule en de
+bijbehorende energiemeting van Thermia aanwezig zijn. Controleer altijd de
 registerkaart die bij de geïnstalleerde controllerfirmware hoort.
 
 ## Vereisten
@@ -43,23 +43,29 @@ registerkaart die bij de geïnstalleerde controllerfirmware hoort.
 - bereikbaarheid van de display-unit op TCP-poort 502.
 
 Installeer `node-red-contrib-modbus` via **Manage Palette → Install**. Importeer
-daarna `thermia-flows.json` en voer vóór Deploy het IP-adres in bij de
-configuratienode **Thermia Genesis**, of stel `THERMIA_HOST` in.
+daarna `thermia-flows.json`.
 
 ## Configuratie
 
-Node-RED vervangt `${THERMIA_HOST}` in de Modbus-configuratienode uit een
-omgevingsvariabele. De overige waarden worden rechtstreeks in de Function-nodes
-uit de omgeving gelezen.
+Alle installatie-instellingen staan bovenaan de flow in de oranje Function-node
+**CONFIGURATIE — DUBBELKLIK**. Dubbelklik deze node en wijzig alleen dit blok:
 
-| Variabele | Standaard | Betekenis |
-|---|---|---|
-| `THERMIA_HOST` | verplicht | IP-adres/hostnaam van de Genesis-display-unit |
-| `THERMIA_UNIT_ID` | `1` | Modbus unit-id; bij TCP meestal niet relevant |
-| `THERMIA_POWER_SOURCE` | `unit` | `unit` = register 30159, `meter` = som 30079..30081 |
-| `THERMIA_ENABLE_WRITES` | `false` | pas na controle op `true` zetten |
-| `THERMIA_CHEAPEST_HOURS` | `5` | aantal goedkoopste uren, 1–24 |
-| `THERMIA_PRICE_MAX_AGE_MIN` | `90` | maximale ouderdom van aangeleverde prijsdata |
+```javascript
+const config = {
+    host: '192.168.1.50', // IP-adres Thermia-display
+    port: 502,
+    unitId: 1,
+    powerSource: 'unit',  // 'unit' of 'meter'
+    enableWrites: false   // pas op true na SG-Ready-controle
+};
+```
+
+Na Deploy configureert deze node zelf de gedeelde Modbus TCP-verbinding. Je hoeft
+de verborgen Modbus-configuratienode dus niet te openen. Klik desgewenst handmatig
+op **Laad configuratie** om de instellingen opnieuw toe te passen.
+
+De flow gebruikt altijd de vijf goedkoopste uren en accepteert prijsdata maximaal
+90 minuten zonder verversing.
 
 De flow schrijft waarde `3` (Boost) tijdens goedkope uren en waarde `0` (Normal)
 daarbuiten naar `40125`. De tapwater-start- en stoptemperaturen worden niet
@@ -103,7 +109,7 @@ Bij ontbrekende, onvolledige of te oude prijsdata wordt Boost opgeheven en
 
 ## Veilig inschakelen
 
-1. Laat `THERMIA_ENABLE_WRITES=false`.
+1. Laat `enableWrites: false`.
 2. Deploy en controleer of de virtuele warmtepomp een geloofwaardig vermogen
    toont. Is `30159` niet beschikbaar, probeer de meterbron.
 3. Controleer dat **Power Consumption Control** op de Thermia als
@@ -111,7 +117,7 @@ Bij ontbrekende, onvolledige of te oude prijsdata wordt Boost opgeheven en
 4. Controleer dat register `40125` leesbaar is en `30083` normaal waarde `4`
    rapporteert.
 5. Koppel de prijsreeks en controleer de status onder **Bepaal 5 goedkoopste uren**.
-6. Zet pas daarna `THERMIA_ENABLE_WRITES=true`.
+6. Zet pas daarna `enableWrites: true`.
 
 De flow schrijft `40125` met Modbus FC6 en maximaal eenmaal per minuut. De volgende
 poll leest zowel de gevraagde als werkelijk actieve modus terug. Voor de actuele
