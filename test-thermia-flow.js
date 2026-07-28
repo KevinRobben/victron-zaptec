@@ -52,7 +52,8 @@ for (const node of flow) {
     env: { THERMIA_UNIT_ID: '7', THERMIA_POWER_SOURCE: 'unit' }
   })
   assert.deepEqual(result[0][0].payload, { fc: 4, unitid: 7, address: 158, quantity: 1 })
-  assert.deepEqual(result[0][1].payload, { fc: 3, unitid: 7, address: 22, quantity: 2 })
+  assert.deepEqual(result[0][1].payload, { fc: 3, unitid: 7, address: 124, quantity: 1 })
+  assert.deepEqual(result[0][2].payload, { fc: 4, unitid: 7, address: 82, quantity: 1 })
 }
 
 {
@@ -98,42 +99,44 @@ for (const node of flow) {
 
 {
   const context = store()
-  const env = {
-    THERMIA_ENABLE_WRITES: 'true',
-    THERMIA_TAPWATER_START_C: '45',
-    THERMIA_TAPWATER_STOP_C: '50',
-    THERMIA_CHEAP_DELTA_C: '3',
-    THERMIA_MAX_TAPWATER_C: '60'
-  }
+  const env = { THERMIA_ENABLE_WRITES: 'true' }
   runFunction('thermia_control', {
     topic: 'thermia.price.state',
     payload: { valid: true, cheap: true }
   }, { context, env })
   const { result } = runFunction('thermia_control', {
-    topic: 'thermia.settings',
-    payload: { startC: 45, stopC: 50 }
+    topic: 'thermia.sg.desired',
+    payload: { mode: 0 }
   }, { context, env })
   assert.deepEqual(result.payload, {
-    value: [4800, 5300],
-    fc: 16,
+    value: 3,
+    fc: 6,
     unitid: 1,
-    address: 22,
-    quantity: 2
+    address: 124,
+    quantity: 1
   })
 }
 
 {
   const { result } = runFunction('thermia_control', {
-    topic: 'thermia.settings',
-    payload: { startC: 45, stopC: 50 }
+    topic: 'thermia.sg.desired',
+    payload: { mode: 0 }
   }, {
-    env: {
-      THERMIA_ENABLE_WRITES: 'false',
-      THERMIA_TAPWATER_START_C: '45',
-      THERMIA_TAPWATER_STOP_C: '50'
-    }
+    env: { THERMIA_ENABLE_WRITES: 'false' }
   })
   assert.equal(result, null)
+}
+
+{
+  const context = store({ priceState: { valid: false, cheap: false } })
+  const { result } = runFunction('thermia_control', {
+    topic: 'thermia.sg.desired',
+    payload: { mode: 3 }
+  }, {
+    context,
+    env: { THERMIA_ENABLE_WRITES: 'true' }
+  })
+  assert.equal(result.payload.value, 0, 'ongeldige prijsdata moet Boost opheffen')
 }
 
 console.log('Thermia-flow: alle tests geslaagd')

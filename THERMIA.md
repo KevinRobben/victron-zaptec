@@ -9,9 +9,8 @@ De flow:
 - publiceert dit in Venus OS en VRM als virtuele **AC Load**;
 - bouwt automatisch een energieteller op;
 - bepaalt de vijf goedkoopste uren van de lokale kalenderdag;
-- kan in die uren de tapwater-start- én stoptemperatuur met dezelfde waarde
-  verhogen, zodat de bestaande hysterese gelijk blijft;
-- herstelt buiten die uren altijd de normale ingestelde temperaturen.
+- kan in die uren **SG Ready Boost** activeren;
+- herstelt buiten die uren altijd de SG Ready-modus **Normal**.
 
 Schrijven naar de warmtepomp staat standaard uit.
 
@@ -24,8 +23,8 @@ de-facto nummers uit Thermia's registerkaart.
 |---|---:|---:|---:|---|
 | `30159` | 158 | 4 | 100 | opgenomen vermogen van de warmtepomp in kW (Genesis 17.1) |
 | `30079..30081` | 78..80 | 4 | 1 | alternatief: L1..L3 vermogen van Thermia's externe energiemeter |
-| `40023` | 22 | 3/16 | 100 | starttemperatuur tapwater |
-| `40024` | 23 | 3/16 | 100 | stoptemperatuur tapwater |
+| `30083` | 82 | 4 | 1 | werkelijk actieve Smart Grid-modus |
+| `40125` | 124 | 3/6 | 1 | gewenste Power Consumption Control-modus |
 
 Register `30158` is het **afgegeven thermische vermogen** en is dus nadrukkelijk
 niet geschikt om het stroomverbruik in VRM te tonen. De flow gebruikt `30159`.
@@ -59,17 +58,12 @@ uit de omgeving gelezen.
 | `THERMIA_UNIT_ID` | `1` | Modbus unit-id; bij TCP meestal niet relevant |
 | `THERMIA_POWER_SOURCE` | `unit` | `unit` = register 30159, `meter` = som 30079..30081 |
 | `THERMIA_ENABLE_WRITES` | `false` | pas na controle op `true` zetten |
-| `THERMIA_TAPWATER_START_C` | automatisch leren | normale starttemperatuur |
-| `THERMIA_TAPWATER_STOP_C` | automatisch leren | normale stoptemperatuur |
-| `THERMIA_CHEAP_DELTA_C` | `3` | verhoging tijdens goedkope uren, 0–10 °C |
-| `THERMIA_MAX_TAPWATER_C` | `60` | absolute bovengrens voor beide doelwaarden |
 | `THERMIA_CHEAPEST_HOURS` | `5` | aantal goedkoopste uren, 1–24 |
 | `THERMIA_PRICE_MAX_AGE_MIN` | `90` | maximale ouderdom van aangeleverde prijsdata |
 
-Vul de normale start- en stoptemperatuur bij voorkeur expliciet in. Als ze
-ontbreken, leert de flow ze alleen tijdens een geldig, niet-goedkoop uur. Daardoor
-kan de regeling bij een eerste start in een goedkoop uur bewust nog niets
-schrijven.
+De flow schrijft waarde `3` (Boost) tijdens goedkope uren en waarde `0` (Normal)
+daarbuiten naar `40125`. De tapwater-start- en stoptemperaturen worden niet
+gewijzigd.
 
 ## Dynamic ESS-prijzen koppelen
 
@@ -104,27 +98,34 @@ Er zijn drie ondersteunde koppelingen:
    Zet een van bovenstaande objecten in `global.thermiaPrices`.
 
 De vijf laagste prijzen worden over de **lokale kalenderdag van de GX** gekozen.
-Bij ontbrekende, onvolledige of te oude prijsdata wordt niet verhoogd. Als
-schrijven aan staat en normale waarden bekend zijn, herstelt de flow dan de
-normale tapwaterinstellingen.
+Bij ontbrekende, onvolledige of te oude prijsdata wordt Boost opgeheven en
+`Normal` gevraagd.
 
 ## Veilig inschakelen
 
 1. Laat `THERMIA_ENABLE_WRITES=false`.
 2. Deploy en controleer of de virtuele warmtepomp een geloofwaardig vermogen
    toont. Is `30159` niet beschikbaar, probeer de meterbron.
-3. Controleer in Debug de gelezen waarden van `40023/40024`.
-4. Stel normale start/stop, delta en maximale temperatuur expliciet in.
+3. Controleer dat **Power Consumption Control** op de Thermia als
+   **SG-Ready** is geconfigureerd, niet als `PL/LU`.
+4. Controleer dat register `40125` leesbaar is en `30083` normaal waarde `4`
+   rapporteert.
 5. Koppel de prijsreeks en controleer de status onder **Bepaal 5 goedkoopste uren**.
 6. Zet pas daarna `THERMIA_ENABLE_WRITES=true`.
 
-De flow schrijft beide temperaturen atomair met Modbus FC16 en maximaal eenmaal
-per minuut. De volgende poll leest de waarden terug. Thermia geeft aan dat deze
-registers alleen geldig zijn als de tapwatermodus **Normal** is.
+De flow schrijft `40125` met Modbus FC6 en maximaal eenmaal per minuut. De volgende
+poll leest zowel de gevraagde als werkelijk actieve modus terug. Voor de actuele
+modus gebruikt Thermia: `1` = EVU, `4` = Normal, `5` = Comfort/Load-Up en `6` =
+Boost.
 
-Houd rekening met legionellapreventie, lokale regelgeving, boilervat- en
-installatiegrenzen. Deze flow vervangt de beveiligingen of het periodieke
-anti-legionellaprogramma van de warmtepomp niet.
+> **Belangrijk:** in `PL/LU`-modus betekent waarde `3` Power Limit in plaats van
+> Boost. Schakel schrijven daarom alleen in nadat SG-Ready op het display is
+> bevestigd. Fysieke Smart Grid-ingangen kunnen de BMS-opdracht overschrijven.
+
+Welke tapwater- en ruimteverwarmingsverhoging Boost veroorzaakt, stel je in op de
+Thermia zelf in. De flow verandert die temperaturen niet. Houd rekening met
+legionellapreventie en installatiegrenzen; de flow vervangt de ingebouwde
+beveiligingen niet.
 
 ## Bronnen
 
