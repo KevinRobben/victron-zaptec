@@ -162,8 +162,8 @@
         "type": "function",
         "z": "f_dash",
         "name": "Config -> context",
-        "func": "// Opgeslagen config uit /data lezen en in global context zetten.\n// De inlogvelden worden BEWUST NIET voorinvuld. Uitgang 1 = positie herstellen,\n// uitgang 2 = laadpalen automatisch ophalen (als inloggegevens bekend zijn).\nlet cfg = {};\ntry { cfg = JSON.parse(msg.payload); } catch (e) { cfg = {}; }\nlet posMsg = null;\nlet fetchMsg = null;\nlet userMsg = null;\nif (cfg && typeof cfg === 'object' && Object.keys(cfg).length) {\n    global.set('zaptecCfg', cfg);\n    node.status({ fill: 'green', shape: 'dot', text: 'config geladen' });\n    if (cfg.position !== undefined && cfg.position !== null && cfg.position !== '') {\n        posMsg = { payload: parseInt(cfg.position, 10) };\n    }\n    if (cfg.username && cfg.password) {\n        fetchMsg = {};\n    }\n    if (cfg.username) {\n        // Alleen de gebruikersnaam voorinvullen (wachtwoord bewust niet).\n        userMsg = { payload: { username: cfg.username } };\n    }\n}\nreturn [posMsg, fetchMsg, userMsg];\n",
-        "outputs": 3,
+        "func": "// Opgeslagen config uit /data lezen en in global context zetten.\n// Uitgang 1 = positie, 2 = laadpalen ophalen, 3 = e-mail in formulier,\n// 4 = laadpaal-dropdown (uit cache/bestand), 5 = samenvatting.\nlet cfg = {};\ntry { cfg = JSON.parse(msg.payload); } catch (e) { cfg = {}; }\nlet posMsg = null;\nlet fetchMsg = null;\nlet userMsg = null;\nlet chargerMsg = null;\nlet summaryMsg = null;\nif (cfg && typeof cfg === 'object' && Object.keys(cfg).length) {\n    if (Array.isArray(cfg.chargerOptions) && cfg.chargerOptions.length) {\n        global.set('zaptecChargerOptions', cfg.chargerOptions);\n        const names = {};\n        cfg.chargerOptions.forEach(function (o) {\n            if (o && o.value) names[o.value] = o.label || o.value;\n        });\n        global.set('zaptecChargerNames', names);\n    }\n    global.set('zaptecCfg', cfg);\n    node.status({ fill: 'green', shape: 'dot', text: 'config geladen' });\n\n    const posVal = (cfg.position !== undefined && cfg.position !== null && cfg.position !== '')\n        ? parseInt(cfg.position, 10) : 1;\n    posMsg = { payload: isNaN(posVal) ? 1 : posVal };\n\n    if (cfg.username && cfg.password) fetchMsg = {};\n    if (cfg.username) {\n        // Wachtwoord bewust leeg; e-mail wél tonen.\n        userMsg = { payload: { username: cfg.username, password: '' } };\n    }\n\n    const opts = global.get('zaptecChargerOptions');\n    if (opts && opts.length) {\n        chargerMsg = { options: opts, ui_update: { options: opts }, payload: cfg.chargerId || opts[0].value };\n    } else if (cfg.chargerId) {\n        const one = [{ value: cfg.chargerId, label: cfg.chargerId }];\n        chargerMsg = { options: one, ui_update: { options: one }, payload: cfg.chargerId };\n    }\n    summaryMsg = {};\n}\nreturn [posMsg, fetchMsg, userMsg, chargerMsg, summaryMsg];\n",
+        "outputs": 5,
         "timeout": "",
         "noerr": 0,
         "initialize": "",
@@ -180,6 +180,12 @@
             ],
             [
                 "d_form"
+            ],
+            [
+                "d_charger"
+            ],
+            [
+                "d_fn_summary"
             ]
         ]
     },
@@ -190,7 +196,7 @@
         "name": "Inloggegevens",
         "group": "ui_group",
         "label": "",
-        "order": 1,
+        "order": 2,
         "width": 0,
         "height": 0,
         "options": [
@@ -205,7 +211,7 @@
                 "label": "Wachtwoord",
                 "key": "password",
                 "type": "password",
-                "required": true,
+                "required": false,
                 "rows": null
             }
         ],
@@ -233,8 +239,8 @@
         "type": "function",
         "z": "f_dash",
         "name": "Inloggegevens opslaan",
-        "func": "// Inloggegevens opslaan -> global context + bestand, en meteen de laadpalen ophalen.\n// Uitgang 1 = bestand, uitgang 2 = melding, uitgang 3 = trigger laadpalen ophalen.\nconst p = msg.payload || {};\nconst prev = global.get('zaptecCfg') || {};\nconst cfg = {\n    baseUrl: (p.baseUrl && String(p.baseUrl).trim()) || 'https://api.zaptec.com',\n    username: String(p.username || '').trim(),\n    password: String(p.password || ''),\n    chargerId: prev.chargerId || ''\n};\nif (!cfg.username || !cfg.password) {\n    node.status({ fill: 'red', shape: 'dot', text: 'vul gebruikersnaam + wachtwoord in' });\n    return [null, { payload: 'Vul gebruikersnaam en wachtwoord in.' }, null];\n}\nif (prev.position !== undefined) cfg.position = prev.position;\nglobal.set('zaptecCfg', cfg);\nglobal.set('zaptecToken', null);\nglobal.set('zaptecTokenExpiry', 0);\nnode.status({ fill: 'green', shape: 'dot', text: 'opgeslagen' });\nreturn [\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" },\n    { payload: 'Inloggegevens opgeslagen. Laadpalen worden opgehaald...' },\n    {}\n];\n",
-        "outputs": 3,
+        "func": "// Inloggegevens opslaan -> global context + bestand, en meteen de laadpalen ophalen.\n// Leeg wachtwoord = behoud het eerder opgeslagen wachtwoord (niet wissen).\nconst p = msg.payload || {};\nconst prev = global.get('zaptecCfg') || {};\nconst cfg = {\n    baseUrl: (p.baseUrl && String(p.baseUrl).trim()) || prev.baseUrl || 'https://api.zaptec.com',\n    username: String(p.username || '').trim(),\n    password: String(p.password || '') || prev.password || '',\n    chargerId: prev.chargerId || ''\n};\nif (!cfg.username || !cfg.password) {\n    node.status({ fill: 'red', shape: 'dot', text: 'vul gebruikersnaam + wachtwoord in' });\n    return [null, { payload: 'Vul gebruikersnaam en wachtwoord in.' }, null, null];\n}\nif (prev.position !== undefined) cfg.position = prev.position;\nif (Array.isArray(prev.chargerOptions)) cfg.chargerOptions = prev.chargerOptions;\nglobal.set('zaptecCfg', cfg);\nglobal.set('zaptecToken', null);\nglobal.set('zaptecTokenExpiry', 0);\nnode.status({ fill: 'green', shape: 'dot', text: 'opgeslagen' });\nreturn [\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" },\n    { payload: 'Inloggegevens opgeslagen. Laadpalen worden opgehaald...' },\n    {},\n    {}\n];\n",
+        "outputs": 4,
         "timeout": "",
         "noerr": 0,
         "initialize": "",
@@ -251,6 +257,9 @@
             ],
             [
                 "d_fn_listauth"
+            ],
+            [
+                "d_fn_summary"
             ]
         ]
     },
@@ -279,19 +288,14 @@
         "name": "Laadpaal",
         "label": "Gekoppelde laadpaal",
         "tooltip": "",
-        "order": 2,
+        "order": 3,
         "width": 0,
         "height": 0,
         "passthru": false,
         "multiple": false,
         "chips": false,
         "clearable": false,
-        "options": [
-            {
-                "value": "",
-                "label": "(sla eerst inloggegevens op)"
-            }
-        ],
+        "options": [],
         "payload": "",
         "topic": "topic",
         "topicType": "msg",
@@ -311,8 +315,8 @@
         "type": "function",
         "z": "f_dash",
         "name": "Laadpaal opslaan",
-        "func": "// Gekozen laadpaal opslaan (global + bestand) + melding. Slaat over als er niets wijzigt.\nconst id = msg.payload;\nif (!id) { return null; }\nconst cfg = global.get('zaptecCfg') || {};\nif (cfg.chargerId === id) { return null; }\ncfg.chargerId = id;\nglobal.set('zaptecCfg', cfg);\nconst names = global.get('zaptecChargerNames') || {};\nnode.status({ fill: 'green', shape: 'dot', text: 'laadpaal ' + (names[id] || id) });\nreturn [\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" },\n    { payload: 'Laadpaal ingesteld op: ' + (names[id] || id) }\n];\n",
-        "outputs": 2,
+        "func": "// Gekozen laadpaal opslaan (global + bestand) + melding. Slaat over als er niets wijzigt.\nconst id = msg.payload;\nif (id === undefined || id === null || id === '' || (typeof id === 'object')) return null;\nconst cfg = global.get('zaptecCfg') || {};\nif (cfg.chargerId === id) return null;\ncfg.chargerId = id;\nglobal.set('zaptecCfg', cfg);\nconst names = global.get('zaptecChargerNames') || {};\nnode.status({ fill: 'green', shape: 'dot', text: 'laadpaal ' + (names[id] || id) });\nreturn [\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" },\n    { payload: 'Laadpaal ingesteld op: ' + (names[id] || id) },\n    {}\n];\n",
+        "outputs": 3,
         "timeout": "",
         "noerr": 0,
         "initialize": "",
@@ -326,6 +330,9 @@
             ],
             [
                 "d_notif"
+            ],
+            [
+                "d_fn_summary"
             ]
         ]
     },
@@ -337,7 +344,7 @@
         "name": "Positie",
         "label": "Positie van de laadpaal",
         "tooltip": "",
-        "order": 3,
+        "order": 4,
         "width": 0,
         "height": 0,
         "passthru": false,
@@ -375,8 +382,8 @@
         "type": "function",
         "z": "f_dash",
         "name": "Positie opslaan",
-        "func": "// Gekozen positie opslaan (global context + persistent bestand). Uitgang 1 = bestand, 2 = melding.\nconst val = parseInt(msg.payload, 10);\nconst cfg = global.get('zaptecCfg') || {};\ncfg.position = isNaN(val) ? 1 : val;\nglobal.set('zaptecCfg', cfg);\nconst labels = { 0: 'AC-uit', 1: 'AC-in' };\nnode.status({ fill: 'green', shape: 'dot', text: 'positie ' + cfg.position });\nreturn [\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" },\n    { payload: 'Positie ingesteld op ' + (labels[cfg.position] || cfg.position) + '.' }\n];\n",
-        "outputs": 2,
+        "func": "// Gekozen positie opslaan. Slaat over bij geen echte keuze of als er niets wijzigt.\nif (typeof msg.payload === 'object' && msg.payload !== null) return null;\nconst val = parseInt(msg.payload, 10);\nif (val !== 0 && val !== 1) return null;\nconst cfg = global.get('zaptecCfg') || {};\nif (cfg.position === val) return null;\ncfg.position = val;\nglobal.set('zaptecCfg', cfg);\nconst labels = { 0: 'AC-uit', 1: 'AC-in' };\nnode.status({ fill: 'green', shape: 'dot', text: 'positie ' + cfg.position });\nreturn [\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" },\n    { payload: 'Positie ingesteld op ' + (labels[cfg.position] || cfg.position) + '.' },\n    {}\n];\n",
+        "outputs": 3,
         "timeout": "",
         "noerr": 0,
         "initialize": "",
@@ -390,6 +397,9 @@
             ],
             [
                 "d_notif"
+            ],
+            [
+                "d_fn_summary"
             ]
         ]
     },
@@ -492,7 +502,7 @@
         "type": "function",
         "z": "f_dash",
         "name": "Laadpalen -> dropdown",
-        "func": "// Vult de laadpaal-dropdown en kiest automatisch de actieve laadpaal.\n// Uitgang 1 = dropdown (opties + selectie), uitgang 2 = melding, uitgang 3 = bestand.\nconst code = msg.statusCode;\nconst net = /ECONNRESET|ETIMEDOUT|ESOCKETTIMEDOUT|RequestError|socket hang up/i.test(\n    String(code || '') + ' ' + (typeof msg.payload === 'string' ? msg.payload : '')\n);\nif (net) {\n    node.status({ fill: 'yellow', shape: 'ring', text: 'verbinding verbroken' });\n    return [null, { payload: 'Verbinding met Zaptec verbroken (tijdelijk). Open de pagina opnieuw of klik Inloggegevens opslaan.' }, null];\n}\nif (code && code !== 200) {\n    node.status({ fill: 'red', shape: 'dot', text: 'fout ' + code });\n    return [null, { payload: 'Fout bij ophalen laadpalen (HTTP ' + code + ').' }, null];\n}\nconst data = (msg.payload && Array.isArray(msg.payload.Data)) ? msg.payload.Data : [];\nconst options = data.map(function (c) {\n    return { value: c.Id, label: (c.Name || '(naamloos)') + (c.IsOnline ? '' : ' - offline') };\n});\nconst names = {};\ndata.forEach(function (c) { names[c.Id] = c.Name || c.Id; });\nglobal.set('zaptecChargerNames', names);\nglobal.set('zaptecChargerOptions', options);\n\nconst cfg = global.get('zaptecCfg') || {};\nconst ids = data.map(function (c) { return c.Id; });\nlet selected = cfg.chargerId;\nif (!selected || ids.indexOf(selected) === -1) {\n    selected = data.length ? data[0].Id : '';\n}\ncfg.chargerId = selected;\nglobal.set('zaptecCfg', cfg);\n\nnode.status({ fill: 'green', shape: 'dot', text: data.length + ' laadpaal(en)' });\nif (!data.length) {\n    return [\n        { options: [{ value: '', label: '(geen laadpalen gevonden)' }], payload: '' },\n        { payload: 'Geen laadpalen gevonden voor dit account.' },\n        null\n    ];\n}\nreturn [\n    { options: options, payload: selected },\n    { payload: data.length + ' laadpaal(en) gevonden. Actief: ' + (names[selected] || selected) },\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" }\n];\n",
+        "func": "// Vult de laadpaal-dropdown en kiest automatisch de actieve laadpaal.\n// Dashboard 2.0: opties via msg.options én msg.ui_update.options.\nfunction selectMsg(opts, selected) {\n    return { options: opts, ui_update: { options: opts }, payload: selected };\n}\n\nconst code = msg.statusCode;\nconst net = /ECONNRESET|ETIMEDOUT|ESOCKETTIMEDOUT|RequestError|socket hang up/i.test(\n    String(code || '') + ' ' + (typeof msg.payload === 'string' ? msg.payload : '')\n);\nconst cfg = global.get('zaptecCfg') || {};\nif (net || (code && code !== 200)) {\n    const cached = global.get('zaptecChargerOptions') || cfg.chargerOptions;\n    node.status({ fill: 'yellow', shape: 'ring', text: net ? 'verbinding verbroken' : ('fout ' + code) });\n    const notice = net\n        ? 'Verbinding met Zaptec verbroken (tijdelijk). Opgeslagen laadpaal blijft zichtbaar; probeer de pagina opnieuw.'\n        : 'Fout bij ophalen laadpalen (HTTP ' + code + ').';\n    if (cached && cached.length) {\n        return [selectMsg(cached, cfg.chargerId || cached[0].value), { payload: notice }, null];\n    }\n    return [null, { payload: notice }, null];\n}\n\nconst data = (msg.payload && Array.isArray(msg.payload.Data)) ? msg.payload.Data : [];\nconst options = data.map(function (c) {\n    return { value: c.Id, label: (c.Name || '(naamloos)') + (c.IsOnline ? '' : ' - offline') };\n});\nconst names = {};\ndata.forEach(function (c) { names[c.Id] = c.Name || c.Id; });\nglobal.set('zaptecChargerNames', names);\nglobal.set('zaptecChargerOptions', options);\n\nconst ids = data.map(function (c) { return c.Id; });\nlet selected = cfg.chargerId;\nif (!selected || ids.indexOf(selected) === -1) {\n    selected = data.length ? data[0].Id : '';\n}\ncfg.chargerId = selected;\nif (options.length) cfg.chargerOptions = options;\nglobal.set('zaptecCfg', cfg);\n\nnode.status({ fill: 'green', shape: 'dot', text: data.length + ' laadpaal(en)' });\nif (!data.length) {\n    const empty = [{ value: '', label: '(geen laadpalen gevonden)' }];\n    return [\n        selectMsg(empty, ''),\n        { payload: 'Geen laadpalen gevonden voor dit account.' },\n        null\n    ];\n}\nreturn [\n    selectMsg(options, selected),\n    { payload: data.length + ' laadpaal(en) gevonden. Actief: ' + (names[selected] || selected) },\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" }\n];\n",
         "outputs": 3,
         "timeout": "",
         "noerr": 0,
@@ -506,7 +516,8 @@
                 "d_charger"
             ],
             [
-                "d_notif"
+                "d_notif",
+                "d_fn_summary"
             ],
             [
                 "d_file_out"
@@ -518,7 +529,7 @@
         "type": "ui-text",
         "z": "f_dash",
         "group": "ui_group",
-        "order": 4,
+        "order": 5,
         "width": 0,
         "height": 0,
         "name": "Status",
@@ -583,11 +594,11 @@
         "z": "f_dash",
         "ui": "ui_base",
         "name": "Pagina geopend",
-        "x": 150,
+        "x": 130,
         "y": 640,
         "wires": [
             [
-                "d_fn_populate"
+                "d_page_delay"
             ]
         ]
     },
@@ -596,15 +607,15 @@
         "type": "function",
         "z": "f_dash",
         "name": "UI vullen",
-        "func": "// Vult de UI wanneer de pagina wordt geopend (niet alleen bij deploy).\n// Uitgang 1 = gebruikersnaam in formulier, 2 = positie, 3 = laadpaal-dropdown (uit cache),\n// 4 = laadpalen ophalen als er nog geen cache is.\nconst cfg = global.get('zaptecCfg') || {};\nconst userMsg = cfg.username ? { payload: { username: cfg.username } } : null;\nconst posVal = (cfg.position !== undefined && cfg.position !== null && cfg.position !== '')\n    ? parseInt(cfg.position, 10) : 1;\nconst posMsg = { payload: posVal };\nconst opts = global.get('zaptecChargerOptions');\nlet chargerMsg = null;\nlet fetchMsg = null;\nif (opts && opts.length) {\n    chargerMsg = { options: opts, payload: cfg.chargerId || opts[0].value };\n} else if (cfg.username && cfg.password) {\n    fetchMsg = {};\n}\nreturn [userMsg, posMsg, chargerMsg, fetchMsg];\n",
-        "outputs": 4,
+        "func": "// Vult de UI wanneer de pagina wordt geopend ($pageview).\n// Uitgang 1 = e-mail in formulier, 2 = positie, 3 = laadpaal-dropdown,\n// 4 = laadpalen ophalen, 5 = samenvatting.\nif (msg.topic === '$pageleave') return [null, null, null, null, null];\n\nconst cfg = global.get('zaptecCfg') || {};\nconst client = msg._client;\n\nfunction withClient(m) {\n    if (m && client) m._client = client;\n    return m;\n}\n\nconst userMsg = cfg.username\n    ? withClient({ payload: { username: cfg.username, password: '' } })\n    : null;\n\nconst posVal = (cfg.position !== undefined && cfg.position !== null && cfg.position !== '')\n    ? parseInt(cfg.position, 10) : 1;\nconst posMsg = withClient({ payload: isNaN(posVal) ? 1 : posVal });\n\nconst opts = global.get('zaptecChargerOptions') || cfg.chargerOptions;\nlet chargerMsg = null;\nif (opts && opts.length) {\n    chargerMsg = withClient({\n        options: opts,\n        ui_update: { options: opts },\n        payload: cfg.chargerId || opts[0].value\n    });\n} else if (cfg.chargerId) {\n    const one = [{ value: cfg.chargerId, label: cfg.chargerId }];\n    chargerMsg = withClient({ options: one, ui_update: { options: one }, payload: cfg.chargerId });\n}\n\n// Altijd opnieuw ophalen als inlog bekend is, zodat de dropdown wijzigbaar blijft.\nconst fetchMsg = (cfg.username && cfg.password) ? {} : null;\nreturn [userMsg, posMsg, chargerMsg, fetchMsg, {}];\n",
+        "outputs": 5,
         "timeout": "",
         "noerr": 0,
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 360,
-        "y": 640,
+        "x": 390,
+        "y": 700,
         "wires": [
             [
                 "d_form"
@@ -617,6 +628,9 @@
             ],
             [
                 "d_fn_listauth"
+            ],
+            [
+                "d_fn_summary"
             ]
         ]
     },
@@ -625,10 +639,12 @@
         "type": "catch",
         "z": "f_dash",
         "name": "onderdruk fouten (bv. bestand ontbreekt)",
-        "scope": null,
+        "scope": [
+            "d_file_in"
+        ],
         "uncaught": false,
         "x": 250,
-        "y": 700,
+        "y": 760,
         "wires": [
             []
         ]
@@ -1131,6 +1147,74 @@
         "info": "Zaptec/nginx sluit idle keep-alive sockets. Zonder Connection: close en retry geeft Node-RED RequestError: read ECONNRESET. Tijdelijke fouten (reset, timeout, 429, 502-504) worden tot 2x opnieuw geprobeerd; 401/403 forceert een nieuw token.",
         "x": 390,
         "y": 460,
+        "wires": []
+    },
+    {
+        "id": "d_page_delay",
+        "type": "delay",
+        "z": "f_dash",
+        "name": "wacht op UI",
+        "pauseType": "delay",
+        "timeout": "400",
+        "timeoutUnits": "milliseconds",
+        "rate": "1",
+        "nbRateUnits": "1",
+        "rateUnits": "second",
+        "randomFirst": "1",
+        "randomLast": "5",
+        "randomUnits": "seconds",
+        "drop": false,
+        "outputs": 1,
+        "x": 250,
+        "y": 700,
+        "wires": [
+            [
+                "d_fn_populate"
+            ]
+        ]
+    },
+    {
+        "id": "d_fn_summary",
+        "type": "function",
+        "z": "f_dash",
+        "name": "Huidige instelling",
+        "func": "const cfg = global.get('zaptecCfg') || {};\nconst names = global.get('zaptecChargerNames') || {};\nconst posLabels = { 0: 'AC-uit', 1: 'AC-in' };\nconst pos = (cfg.position in posLabels) ? posLabels[cfg.position] : (cfg.position != null && cfg.position !== '' ? String(cfg.position) : '–');\nconst charger = names[cfg.chargerId] || cfg.chargerId || '–';\nmsg.payload = 'E-mail: ' + (cfg.username || '–') + '  |  Laadpaal: ' + charger + '  |  Positie: ' + pos;\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 620,
+        "y": 640,
+        "wires": [
+            [
+                "d_summary_txt"
+            ]
+        ]
+    },
+    {
+        "id": "d_summary_txt",
+        "type": "ui-text",
+        "z": "f_dash",
+        "group": "ui_group",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "name": "Huidige instelling",
+        "label": "Huidige instelling",
+        "format": "{{msg.payload}}",
+        "layout": "col-center",
+        "style": false,
+        "font": "",
+        "fontSize": 16,
+        "color": "#333333",
+        "wrapText": true,
+        "className": "",
+        "value": "payload",
+        "valueType": "msg",
+        "x": 850,
+        "y": 640,
         "wires": []
     }
 ]

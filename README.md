@@ -180,15 +180,19 @@ Waarom dit handig is voor jullie als installateur:
    een melding (toast). Alles wordt bewaard in `/data/zaptec-config.json` (blijft
    behouden na herstart).
 
-> Bij het **openen van de dashboard-pagina** worden de opgeslagen waarden hersteld:
-> de **gebruikersnaam** wordt voorinvuld, de **laadpaal-dropdown** en de
-> **positie** worden gevuld met de opgeslagen keuze. Het **wachtwoord** blijft
-> bewust leeg. Ziet je browser toch een gebruikersnaam/wachtwoord (bijv. `admin`)
-> ingevuld staan, dan komt dat van de autofill-/wachtwoordmanager van de browser —
-> onze prefill zet de juiste gebruikersnaam bij het openen.
+> Bij het **openen van de dashboard-pagina** toont de regel **Huidige instelling**
+> het opgeslagen e-mailadres, de laadpaal en de positie. Het formulier vult de
+> **gebruikersnaam (e-mail)** in; het **wachtwoord blijft leeg** (en wordt nooit
+> teruggezet). Laat het wachtwoord leeg en klik opslaan als je alleen de
+> gebruikersnaam wilt zien/vernieuwen — het opgeslagen wachtwoord blijft dan
+> behouden. De dropdowns **Gekoppelde laadpaal** en **Positie** worden gevuld
+> met de laatste bekende keuze (de laadpaallijst wordt ook in
+> `/data/zaptec-config.json` bewaard, zodat je kunt wisselen ook als Zaptec even
+> niet bereikbaar is) en daarna ververst via de API.
 >
-> Na een herstart worden de laadpalen automatisch opnieuw opgehaald (zolang de
-> inloggegevens bekend zijn), zodat de dropdown de actieve laadpaal blijft tonen.
+> Ziet je browser toch een gebruikersnaam/wachtwoord (bijv. `admin`) ingevuld
+> staan, dan komt dat van de autofill-/wachtwoordmanager van de browser — onze
+> prefill zet de juiste gebruikersnaam bij het openen.
 
 De invoer wordt bewaard in de **global context** en in het bestand
 `/data/zaptec-config.json`.
@@ -343,7 +347,7 @@ laadpaal of installatie gewijzigd.
 | `charger-id ontbreekt`                | Nog geen laadpaal gekozen; sla inloggegevens op en kies er één in de dropdown. |
 | `geen state ontvangen`                | Charger offline, of account heeft geen owner-rechten op de installatie.    |
 | `RequestError: read ECONNRESET` / status `verbinding met Zaptec verbroken` | Zaptec (nginx) heeft de TCP-verbinding verbroken, meestal door een gesloten keep-alive socket of een korte storing. De flow sluit verbindingen bewust (`Connection: close`) en probeert het tot 2× opnieuw. Een losse melding is onschuldig; de volgende poll gaat vanzelf verder. Blijft het **aanhouden**: GX herstarten, internetpad naar `api.zaptec.com` controleren, of even later opnieuw. Bij een GX Touch kan "live kijken" continu actief zijn (poll elke 5 s); dat is geen oorzaak van ECONNRESET, maar bij aanhoudende resets kun je `ZAPTEC_POLL_WATCHING_SEC` tijdelijk verhogen. |
-| Dashboard-tegel/formulier ontbreekt   | `@flowfuse/node-red-dashboard` niet geïnstalleerd, of flow niet gedeployed.|
+| E-mail/laadpaal/positie leeg in het dashboard, dropdowns niet te wijzigen | Flow opnieuw importeren/deployen. Bij openen van de tegel moeten e-mail, laadpaal en positie in **Huidige instelling** staan; het wachtwoord blijft leeg. Helpt dat niet: eenmaal opnieuw **Inloggegevens opslaan** (wachtwoord invullen). |
 | "Unknown node" bij importeren         | Installeer eerst `@flowfuse/node-red-dashboard` via *Manage Palette*.      |
 | Meldingen `Cannot save user settings: Settings not available` / `Property 'telemetryEnabled'…` | **Onschuldig.** Dit zijn bekende Node-RED/Venus OS-meldingen van Dashboard 2.0 rond runtime-settings/telemetry; ze blokkeren de werking niet en mogen genegeerd worden. |
 | Meter verschijnt niet in de GX        | `node-red-contrib-victron` te oud, of device-type/rol niet ondersteund.    |
