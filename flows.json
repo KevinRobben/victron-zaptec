@@ -162,8 +162,8 @@
         "type": "function",
         "z": "f_dash",
         "name": "Config -> context",
-        "func": "// Opgeslagen config uit /data lezen en in global context zetten.\n// De inlogvelden worden BEWUST NIET voorinvuld. Uitgang 1 = positie herstellen,\n// uitgang 2 = laadpalen automatisch ophalen (als inloggegevens bekend zijn).\nlet cfg = {};\ntry { cfg = JSON.parse(msg.payload); } catch (e) { cfg = {}; }\nlet posMsg = null;\nlet fetchMsg = null;\nlet userMsg = null;\nif (cfg && typeof cfg === 'object' && Object.keys(cfg).length) {\n    global.set('zaptecCfg', cfg);\n    node.status({ fill: 'green', shape: 'dot', text: 'config geladen' });\n    if (cfg.position !== undefined && cfg.position !== null && cfg.position !== '') {\n        posMsg = { payload: parseInt(cfg.position, 10) };\n    }\n    if (cfg.username && cfg.password) {\n        fetchMsg = {};\n    }\n    if (cfg.username) {\n        // Alleen de gebruikersnaam voorinvullen (wachtwoord bewust niet).\n        userMsg = { payload: { username: cfg.username } };\n    }\n}\nreturn [posMsg, fetchMsg, userMsg];\n",
-        "outputs": 3,
+        "func": "// Opgeslagen config uit /data lezen en in global context zetten.\n// Uitgang 1 = positie, 2 = laadpalen ophalen, 3 = e-mail in formulier,\n// 4 = laadpaal-dropdown (uit cache/bestand), 5 = samenvatting.\nlet cfg = {};\ntry { cfg = JSON.parse(msg.payload); } catch (e) { cfg = {}; }\nlet posMsg = null;\nlet fetchMsg = null;\nlet userMsg = null;\nlet chargerMsg = null;\nlet summaryMsg = null;\nif (cfg && typeof cfg === 'object' && Object.keys(cfg).length) {\n    if (Array.isArray(cfg.chargerOptions) && cfg.chargerOptions.length) {\n        global.set('zaptecChargerOptions', cfg.chargerOptions);\n        const names = {};\n        cfg.chargerOptions.forEach(function (o) {\n            if (o && o.value) names[o.value] = o.label || o.value;\n        });\n        global.set('zaptecChargerNames', names);\n    }\n    global.set('zaptecCfg', cfg);\n    node.status({ fill: 'green', shape: 'dot', text: 'config geladen' });\n\n    const posVal = (cfg.position !== undefined && cfg.position !== null && cfg.position !== '')\n        ? parseInt(cfg.position, 10) : 1;\n    posMsg = { payload: isNaN(posVal) ? 1 : posVal };\n\n    if (cfg.username && cfg.password) fetchMsg = {};\n    if (cfg.username) {\n        // Wachtwoord bewust leeg; e-mail wél tonen.\n        userMsg = { payload: { username: cfg.username, password: '' } };\n    }\n\n    const opts = global.get('zaptecChargerOptions');\n    if (opts && opts.length) {\n        chargerMsg = { options: opts, ui_update: { options: opts }, payload: cfg.chargerId || opts[0].value };\n    } else if (cfg.chargerId) {\n        const one = [{ value: cfg.chargerId, label: cfg.chargerId }];\n        chargerMsg = { options: one, ui_update: { options: one }, payload: cfg.chargerId };\n    }\n    summaryMsg = {};\n}\nreturn [posMsg, fetchMsg, userMsg, chargerMsg, summaryMsg];\n",
+        "outputs": 5,
         "timeout": "",
         "noerr": 0,
         "initialize": "",
@@ -180,6 +180,12 @@
             ],
             [
                 "d_form"
+            ],
+            [
+                "d_charger"
+            ],
+            [
+                "d_fn_summary"
             ]
         ]
     },
@@ -190,7 +196,7 @@
         "name": "Inloggegevens",
         "group": "ui_group",
         "label": "",
-        "order": 1,
+        "order": 2,
         "width": 0,
         "height": 0,
         "options": [
@@ -205,7 +211,7 @@
                 "label": "Wachtwoord",
                 "key": "password",
                 "type": "password",
-                "required": true,
+                "required": false,
                 "rows": null
             }
         ],
@@ -233,8 +239,8 @@
         "type": "function",
         "z": "f_dash",
         "name": "Inloggegevens opslaan",
-        "func": "// Inloggegevens opslaan -> global context + bestand, en meteen de laadpalen ophalen.\n// Uitgang 1 = bestand, uitgang 2 = melding, uitgang 3 = trigger laadpalen ophalen.\nconst p = msg.payload || {};\nconst prev = global.get('zaptecCfg') || {};\nconst cfg = {\n    baseUrl: (p.baseUrl && String(p.baseUrl).trim()) || 'https://api.zaptec.com',\n    username: String(p.username || '').trim(),\n    password: String(p.password || ''),\n    chargerId: prev.chargerId || ''\n};\nif (!cfg.username || !cfg.password) {\n    node.status({ fill: 'red', shape: 'dot', text: 'vul gebruikersnaam + wachtwoord in' });\n    return [null, { payload: 'Vul gebruikersnaam en wachtwoord in.' }, null];\n}\nif (prev.position !== undefined) cfg.position = prev.position;\nglobal.set('zaptecCfg', cfg);\nglobal.set('zaptecToken', null);\nglobal.set('zaptecTokenExpiry', 0);\nnode.status({ fill: 'green', shape: 'dot', text: 'opgeslagen' });\nreturn [\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" },\n    { payload: 'Inloggegevens opgeslagen. Laadpalen worden opgehaald...' },\n    {}\n];\n",
-        "outputs": 3,
+        "func": "// Inloggegevens opslaan -> global context + bestand, en meteen de laadpalen ophalen.\n// Leeg wachtwoord = behoud het eerder opgeslagen wachtwoord (niet wissen).\nconst p = msg.payload || {};\nconst prev = global.get('zaptecCfg') || {};\nconst cfg = {\n    baseUrl: (p.baseUrl && String(p.baseUrl).trim()) || prev.baseUrl || 'https://api.zaptec.com',\n    username: String(p.username || '').trim(),\n    password: String(p.password || '') || prev.password || '',\n    chargerId: prev.chargerId || ''\n};\nif (!cfg.username || !cfg.password) {\n    node.status({ fill: 'red', shape: 'dot', text: 'vul gebruikersnaam + wachtwoord in' });\n    return [null, { payload: 'Vul gebruikersnaam en wachtwoord in.' }, null, null];\n}\nif (prev.position !== undefined) cfg.position = prev.position;\nif (Array.isArray(prev.chargerOptions)) cfg.chargerOptions = prev.chargerOptions;\nglobal.set('zaptecCfg', cfg);\nglobal.set('zaptecToken', null);\nglobal.set('zaptecTokenExpiry', 0);\nnode.status({ fill: 'green', shape: 'dot', text: 'opgeslagen' });\nreturn [\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" },\n    { payload: 'Inloggegevens opgeslagen. Laadpalen worden opgehaald...' },\n    {},\n    {}\n];\n",
+        "outputs": 4,
         "timeout": "",
         "noerr": 0,
         "initialize": "",
@@ -251,6 +257,9 @@
             ],
             [
                 "d_fn_listauth"
+            ],
+            [
+                "d_fn_summary"
             ]
         ]
     },
@@ -279,19 +288,14 @@
         "name": "Laadpaal",
         "label": "Gekoppelde laadpaal",
         "tooltip": "",
-        "order": 2,
+        "order": 3,
         "width": 0,
         "height": 0,
         "passthru": false,
         "multiple": false,
         "chips": false,
         "clearable": false,
-        "options": [
-            {
-                "value": "",
-                "label": "(sla eerst inloggegevens op)"
-            }
-        ],
+        "options": [],
         "payload": "",
         "topic": "topic",
         "topicType": "msg",
@@ -311,8 +315,8 @@
         "type": "function",
         "z": "f_dash",
         "name": "Laadpaal opslaan",
-        "func": "// Gekozen laadpaal opslaan (global + bestand) + melding. Slaat over als er niets wijzigt.\nconst id = msg.payload;\nif (!id) { return null; }\nconst cfg = global.get('zaptecCfg') || {};\nif (cfg.chargerId === id) { return null; }\ncfg.chargerId = id;\nglobal.set('zaptecCfg', cfg);\nconst names = global.get('zaptecChargerNames') || {};\nnode.status({ fill: 'green', shape: 'dot', text: 'laadpaal ' + (names[id] || id) });\nreturn [\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" },\n    { payload: 'Laadpaal ingesteld op: ' + (names[id] || id) }\n];\n",
-        "outputs": 2,
+        "func": "// Gekozen laadpaal opslaan (global + bestand) + melding. Slaat over als er niets wijzigt.\nconst id = msg.payload;\nif (id === undefined || id === null || id === '' || (typeof id === 'object')) return null;\nconst cfg = global.get('zaptecCfg') || {};\nif (cfg.chargerId === id) return null;\ncfg.chargerId = id;\nglobal.set('zaptecCfg', cfg);\nconst names = global.get('zaptecChargerNames') || {};\nnode.status({ fill: 'green', shape: 'dot', text: 'laadpaal ' + (names[id] || id) });\nreturn [\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" },\n    { payload: 'Laadpaal ingesteld op: ' + (names[id] || id) },\n    {}\n];\n",
+        "outputs": 3,
         "timeout": "",
         "noerr": 0,
         "initialize": "",
@@ -326,6 +330,9 @@
             ],
             [
                 "d_notif"
+            ],
+            [
+                "d_fn_summary"
             ]
         ]
     },
@@ -337,7 +344,7 @@
         "name": "Positie",
         "label": "Positie van de laadpaal",
         "tooltip": "",
-        "order": 3,
+        "order": 4,
         "width": 0,
         "height": 0,
         "passthru": false,
@@ -375,8 +382,8 @@
         "type": "function",
         "z": "f_dash",
         "name": "Positie opslaan",
-        "func": "// Gekozen positie opslaan (global context + persistent bestand). Uitgang 1 = bestand, 2 = melding.\nconst val = parseInt(msg.payload, 10);\nconst cfg = global.get('zaptecCfg') || {};\ncfg.position = isNaN(val) ? 1 : val;\nglobal.set('zaptecCfg', cfg);\nconst labels = { 0: 'AC-uit', 1: 'AC-in' };\nnode.status({ fill: 'green', shape: 'dot', text: 'positie ' + cfg.position });\nreturn [\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" },\n    { payload: 'Positie ingesteld op ' + (labels[cfg.position] || cfg.position) + '.' }\n];\n",
-        "outputs": 2,
+        "func": "// Gekozen positie opslaan. Slaat over bij geen echte keuze of als er niets wijzigt.\nif (typeof msg.payload === 'object' && msg.payload !== null) return null;\nconst val = parseInt(msg.payload, 10);\nif (val !== 0 && val !== 1) return null;\nconst cfg = global.get('zaptecCfg') || {};\nif (cfg.position === val) return null;\ncfg.position = val;\nglobal.set('zaptecCfg', cfg);\nconst labels = { 0: 'AC-uit', 1: 'AC-in' };\nnode.status({ fill: 'green', shape: 'dot', text: 'positie ' + cfg.position });\nreturn [\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" },\n    { payload: 'Positie ingesteld op ' + (labels[cfg.position] || cfg.position) + '.' },\n    {}\n];\n",
+        "outputs": 3,
         "timeout": "",
         "noerr": 0,
         "initialize": "",
@@ -390,6 +397,9 @@
             ],
             [
                 "d_notif"
+            ],
+            [
+                "d_fn_summary"
             ]
         ]
     },
@@ -398,7 +408,7 @@
         "type": "function",
         "z": "f_dash",
         "name": "Auth voor lijst",
-        "func": "// Token ophalen om de laadpalen te tonen. Uitgang 1 = tokenrequest, uitgang 2 = melding.\nconst g = global.get('zaptecCfg') || {};\nif (!g.username || !g.password) {\n    node.status({ fill: 'yellow', shape: 'ring', text: 'geen inloggegevens' });\n    return [null, { payload: 'Vul eerst gebruikersnaam en wachtwoord in en klik Opslaan.' }];\n}\nconst baseUrl = g.baseUrl || 'https://api.zaptec.com';\nflow.set('listBaseUrl', baseUrl);\nmsg.method = 'POST';\nmsg.url = baseUrl + '/oauth/token';\nmsg.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };\nmsg.payload = 'grant_type=password'\n    + '&username=' + encodeURIComponent(g.username)\n    + '&password=' + encodeURIComponent(g.password)\n    + '&scope=openid';\nnode.status({ fill: 'blue', shape: 'ring', text: 'ophalen...' });\nreturn [msg, null];\n",
+        "func": "// Token ophalen om de laadpalen te tonen. Uitgang 1 = tokenrequest, uitgang 2 = melding.\nconst g = global.get('zaptecCfg') || {};\nif (!g.username || !g.password) {\n    node.status({ fill: 'yellow', shape: 'ring', text: 'geen inloggegevens' });\n    return [null, { payload: 'Vul eerst gebruikersnaam en wachtwoord in en klik Opslaan.' }];\n}\nconst baseUrl = g.baseUrl || 'https://api.zaptec.com';\nflow.set('listBaseUrl', baseUrl);\ndelete msg.headers;\ndelete msg.responseUrl;\ndelete msg.redirectList;\ndelete msg.responseCookies;\ndelete msg.statusCode;\ndelete msg.error;\nmsg.method = 'POST';\nmsg.url = baseUrl + '/oauth/token';\nmsg.headers = {\n    'Content-Type': 'application/x-www-form-urlencoded',\n    'Accept': 'application/json',\n    'Connection': 'close'\n};\nmsg.payload = 'grant_type=password'\n    + '&username=' + encodeURIComponent(g.username)\n    + '&password=' + encodeURIComponent(g.password)\n    + '&scope=openid';\nmsg.requestTimeout = 20000;\nnode.status({ fill: 'blue', shape: 'ring', text: 'ophalen...' });\nreturn [msg, null];\n",
         "outputs": 2,
         "timeout": "",
         "noerr": 0,
@@ -445,7 +455,7 @@
         "type": "function",
         "z": "f_dash",
         "name": "Chargers-request",
-        "func": "// Uitgang 1 = chargers-request, uitgang 2 = foutmelding.\nconst body = (msg.payload && typeof msg.payload === 'object') ? msg.payload : {};\nif (!body.access_token) {\n    const code = msg.statusCode || '?';\n    node.status({ fill: 'red', shape: 'dot', text: 'auth mislukt (' + code + ')' });\n    return [null, { payload: 'Inloggen bij Zaptec mislukt (HTTP ' + code + '). Controleer gebruikersnaam en wachtwoord.' }];\n}\nconst baseUrl = flow.get('listBaseUrl') || 'https://api.zaptec.com';\nmsg.method = 'GET';\nmsg.headers = { 'Authorization': 'Bearer ' + body.access_token };\nmsg.url = baseUrl + '/api/chargers';\ndelete msg.payload;\nreturn [msg, null];\n",
+        "func": "// Uitgang 1 = chargers-request, uitgang 2 = foutmelding.\nconst body = (msg.payload && typeof msg.payload === 'object') ? msg.payload : {};\nconst code = msg.statusCode || '?';\nconst net = /ECONNRESET|ETIMEDOUT|ESOCKETTIMEDOUT|RequestError|socket hang up/i.test(\n    String(code) + ' ' + ((msg.error && msg.error.message) || '') + ' ' + (typeof msg.payload === 'string' ? msg.payload : '')\n);\nif (!body.access_token) {\n    node.status({ fill: 'red', shape: 'dot', text: net ? 'verbinding verbroken' : ('auth mislukt (' + code + ')') });\n    const text = net\n        ? 'Verbinding met Zaptec verbroken (tijdelijk). Probeer opnieuw.'\n        : 'Inloggen bij Zaptec mislukt (HTTP ' + code + '). Controleer gebruikersnaam en wachtwoord.';\n    return [null, { payload: text }];\n}\nconst baseUrl = flow.get('listBaseUrl') || 'https://api.zaptec.com';\ndelete msg.headers;\ndelete msg.responseUrl;\ndelete msg.redirectList;\ndelete msg.responseCookies;\ndelete msg.statusCode;\ndelete msg.error;\ndelete msg.payload;\nmsg.method = 'GET';\nmsg.headers = {\n    'Authorization': 'Bearer ' + body.access_token,\n    'Accept': 'application/json',\n    'Connection': 'close'\n};\nmsg.url = baseUrl + '/api/chargers';\nmsg.requestTimeout = 20000;\nreturn [msg, null];\n",
         "outputs": 2,
         "timeout": "",
         "noerr": 0,
@@ -492,7 +502,7 @@
         "type": "function",
         "z": "f_dash",
         "name": "Laadpalen -> dropdown",
-        "func": "// Vult de laadpaal-dropdown en kiest automatisch de actieve laadpaal.\n// Uitgang 1 = dropdown (opties + selectie), uitgang 2 = melding, uitgang 3 = bestand.\nconst code = msg.statusCode;\nif (code && code !== 200) {\n    node.status({ fill: 'red', shape: 'dot', text: 'fout ' + code });\n    return [null, { payload: 'Fout bij ophalen laadpalen (HTTP ' + code + ').' }, null];\n}\nconst data = (msg.payload && Array.isArray(msg.payload.Data)) ? msg.payload.Data : [];\nconst options = data.map(function (c) {\n    return { value: c.Id, label: (c.Name || '(naamloos)') + (c.IsOnline ? '' : ' - offline') };\n});\nconst names = {};\ndata.forEach(function (c) { names[c.Id] = c.Name || c.Id; });\nglobal.set('zaptecChargerNames', names);\nglobal.set('zaptecChargerOptions', options);\n\nconst cfg = global.get('zaptecCfg') || {};\nconst ids = data.map(function (c) { return c.Id; });\nlet selected = cfg.chargerId;\nif (!selected || ids.indexOf(selected) === -1) {\n    selected = data.length ? data[0].Id : '';\n}\ncfg.chargerId = selected;\nglobal.set('zaptecCfg', cfg);\n\nnode.status({ fill: 'green', shape: 'dot', text: data.length + ' laadpaal(en)' });\nif (!data.length) {\n    return [\n        { options: [{ value: '', label: '(geen laadpalen gevonden)' }], payload: '' },\n        { payload: 'Geen laadpalen gevonden voor dit account.' },\n        null\n    ];\n}\nreturn [\n    { options: options, payload: selected },\n    { payload: data.length + ' laadpaal(en) gevonden. Actief: ' + (names[selected] || selected) },\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" }\n];\n",
+        "func": "// Vult de laadpaal-dropdown en kiest automatisch de actieve laadpaal.\n// Dashboard 2.0: opties via msg.options én msg.ui_update.options.\nfunction selectMsg(opts, selected) {\n    return { options: opts, ui_update: { options: opts }, payload: selected };\n}\n\nconst code = msg.statusCode;\nconst net = /ECONNRESET|ETIMEDOUT|ESOCKETTIMEDOUT|RequestError|socket hang up/i.test(\n    String(code || '') + ' ' + (typeof msg.payload === 'string' ? msg.payload : '')\n);\nconst cfg = global.get('zaptecCfg') || {};\nif (net || (code && code !== 200)) {\n    const cached = global.get('zaptecChargerOptions') || cfg.chargerOptions;\n    node.status({ fill: 'yellow', shape: 'ring', text: net ? 'verbinding verbroken' : ('fout ' + code) });\n    const notice = net\n        ? 'Verbinding met Zaptec verbroken (tijdelijk). Opgeslagen laadpaal blijft zichtbaar; probeer de pagina opnieuw.'\n        : 'Fout bij ophalen laadpalen (HTTP ' + code + ').';\n    if (cached && cached.length) {\n        return [selectMsg(cached, cfg.chargerId || cached[0].value), { payload: notice }, null];\n    }\n    return [null, { payload: notice }, null];\n}\n\nconst data = (msg.payload && Array.isArray(msg.payload.Data)) ? msg.payload.Data : [];\nconst options = data.map(function (c) {\n    return { value: c.Id, label: (c.Name || '(naamloos)') + (c.IsOnline ? '' : ' - offline') };\n});\nconst names = {};\ndata.forEach(function (c) { names[c.Id] = c.Name || c.Id; });\nglobal.set('zaptecChargerNames', names);\nglobal.set('zaptecChargerOptions', options);\n\nconst ids = data.map(function (c) { return c.Id; });\nlet selected = cfg.chargerId;\nif (!selected || ids.indexOf(selected) === -1) {\n    selected = data.length ? data[0].Id : '';\n}\ncfg.chargerId = selected;\nif (options.length) cfg.chargerOptions = options;\nglobal.set('zaptecCfg', cfg);\n\nnode.status({ fill: 'green', shape: 'dot', text: data.length + ' laadpaal(en)' });\nif (!data.length) {\n    const empty = [{ value: '', label: '(geen laadpalen gevonden)' }];\n    return [\n        selectMsg(empty, ''),\n        { payload: 'Geen laadpalen gevonden voor dit account.' },\n        null\n    ];\n}\nreturn [\n    selectMsg(options, selected),\n    { payload: data.length + ' laadpaal(en) gevonden. Actief: ' + (names[selected] || selected) },\n    { payload: JSON.stringify(cfg, null, 2), filename: \"/data/zaptec-config.json\" }\n];\n",
         "outputs": 3,
         "timeout": "",
         "noerr": 0,
@@ -506,7 +516,8 @@
                 "d_charger"
             ],
             [
-                "d_notif"
+                "d_notif",
+                "d_fn_summary"
             ],
             [
                 "d_file_out"
@@ -518,7 +529,7 @@
         "type": "ui-text",
         "z": "f_dash",
         "group": "ui_group",
-        "order": 4,
+        "order": 5,
         "width": 0,
         "height": 0,
         "name": "Status",
@@ -583,11 +594,11 @@
         "z": "f_dash",
         "ui": "ui_base",
         "name": "Pagina geopend",
-        "x": 150,
+        "x": 130,
         "y": 640,
         "wires": [
             [
-                "d_fn_populate"
+                "d_page_delay"
             ]
         ]
     },
@@ -596,15 +607,15 @@
         "type": "function",
         "z": "f_dash",
         "name": "UI vullen",
-        "func": "// Vult de UI wanneer de pagina wordt geopend (niet alleen bij deploy).\n// Uitgang 1 = gebruikersnaam in formulier, 2 = positie, 3 = laadpaal-dropdown (uit cache),\n// 4 = laadpalen ophalen als er nog geen cache is.\nconst cfg = global.get('zaptecCfg') || {};\nconst userMsg = cfg.username ? { payload: { username: cfg.username } } : null;\nconst posVal = (cfg.position !== undefined && cfg.position !== null && cfg.position !== '')\n    ? parseInt(cfg.position, 10) : 1;\nconst posMsg = { payload: posVal };\nconst opts = global.get('zaptecChargerOptions');\nlet chargerMsg = null;\nlet fetchMsg = null;\nif (opts && opts.length) {\n    chargerMsg = { options: opts, payload: cfg.chargerId || opts[0].value };\n} else if (cfg.username && cfg.password) {\n    fetchMsg = {};\n}\nreturn [userMsg, posMsg, chargerMsg, fetchMsg];\n",
-        "outputs": 4,
+        "func": "// Vult de UI wanneer de pagina wordt geopend ($pageview).\n// Uitgang 1 = e-mail in formulier, 2 = positie, 3 = laadpaal-dropdown,\n// 4 = laadpalen ophalen, 5 = samenvatting.\nif (msg.topic === '$pageleave') return [null, null, null, null, null];\n\nconst cfg = global.get('zaptecCfg') || {};\nconst client = msg._client;\n\nfunction withClient(m) {\n    if (m && client) m._client = client;\n    return m;\n}\n\nconst userMsg = cfg.username\n    ? withClient({ payload: { username: cfg.username, password: '' } })\n    : null;\n\nconst posVal = (cfg.position !== undefined && cfg.position !== null && cfg.position !== '')\n    ? parseInt(cfg.position, 10) : 1;\nconst posMsg = withClient({ payload: isNaN(posVal) ? 1 : posVal });\n\nconst opts = global.get('zaptecChargerOptions') || cfg.chargerOptions;\nlet chargerMsg = null;\nif (opts && opts.length) {\n    chargerMsg = withClient({\n        options: opts,\n        ui_update: { options: opts },\n        payload: cfg.chargerId || opts[0].value\n    });\n} else if (cfg.chargerId) {\n    const one = [{ value: cfg.chargerId, label: cfg.chargerId }];\n    chargerMsg = withClient({ options: one, ui_update: { options: one }, payload: cfg.chargerId });\n}\n\n// Altijd opnieuw ophalen als inlog bekend is, zodat de dropdown wijzigbaar blijft.\nconst fetchMsg = (cfg.username && cfg.password) ? {} : null;\nreturn [userMsg, posMsg, chargerMsg, fetchMsg, {}];\n",
+        "outputs": 5,
         "timeout": "",
         "noerr": 0,
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 360,
-        "y": 640,
+        "x": 390,
+        "y": 700,
         "wires": [
             [
                 "d_form"
@@ -617,6 +628,9 @@
             ],
             [
                 "d_fn_listauth"
+            ],
+            [
+                "d_fn_summary"
             ]
         ]
     },
@@ -625,10 +639,12 @@
         "type": "catch",
         "z": "f_dash",
         "name": "onderdruk fouten (bv. bestand ontbreekt)",
-        "scope": null,
+        "scope": [
+            "d_file_in"
+        ],
         "uncaught": false,
         "x": 250,
-        "y": 700,
+        "y": 760,
         "wires": [
             []
         ]
@@ -673,7 +689,7 @@
         "type": "function",
         "z": "f_poll",
         "name": "Adaptieve planner",
-        "func": "// Adaptief pollen: snel bij live kijken, wat trager tijdens laden, traag bij idle.\nconst now = Date.now();\nconst S = 1000;\nconst iWatch = (parseInt(env.get('ZAPTEC_POLL_WATCHING_SEC'), 10) || 5) * S;\nconst iCharge = (parseInt(env.get('ZAPTEC_POLL_CHARGING_SEC'), 10) || 15) * S;\nconst iIdle = (parseInt(env.get('ZAPTEC_POLL_IDLE_SEC'), 10) || 120) * S;\nconst watchTimeout = (parseInt(env.get('ZAPTEC_WATCH_TIMEOUT_SEC'), 10) || 90) * S;\n\nconst lastAct = flow.get('lastVrmActivity') || 0;\nconst watching = (now - lastAct) < watchTimeout;\nconst charging = flow.get('chargeState') === 'charging';\nconst interval = watching ? iWatch : (charging ? iCharge : iIdle);\n\nconst lastFetch = flow.get('lastFetchTs') || 0;\nif (now - lastFetch >= interval) {\n    flow.set('lastFetchTs', now);\n    const mode = watching ? 'live' : (charging ? 'laden' : 'idle');\n    node.status({ fill: 'blue', shape: 'ring', text: 'poll (' + mode + ')' });\n    return msg;\n}\nreturn null;\n",
+        "func": "// Adaptief pollen: snel bij live kijken, wat trager tijdens laden, traag bij idle.\nconst now = Date.now();\nconst S = 1000;\nconst iWatch = (parseInt(env.get('ZAPTEC_POLL_WATCHING_SEC'), 10) || 5) * S;\nconst iCharge = (parseInt(env.get('ZAPTEC_POLL_CHARGING_SEC'), 10) || 15) * S;\nconst iIdle = (parseInt(env.get('ZAPTEC_POLL_IDLE_SEC'), 10) || 120) * S;\nconst watchTimeout = (parseInt(env.get('ZAPTEC_WATCH_TIMEOUT_SEC'), 10) || 90) * S;\n\nconst lastAct = flow.get('lastVrmActivity') || 0;\nconst watching = (now - lastAct) < watchTimeout;\nconst charging = flow.get('chargeState') === 'charging';\nconst interval = watching ? iWatch : (charging ? iCharge : iIdle);\n\n// Geen overlappende requests (hangende call of retry in vlucht).\nconst inflightSince = flow.get('zaptecInFlightSince') || 0;\nif (flow.get('zaptecInFlight') && (now - inflightSince) < 60000) {\n    node.status({ fill: 'yellow', shape: 'ring', text: 'wacht op vorige request' });\n    return null;\n}\n\n// Na herhaalde netwerkfouten (ECONNRESET) even langzamer pollen i.p.v. hameren.\nconst fails = flow.get('zaptecFailCount') || 0;\nconst extraBackoff = fails >= 3 ? Math.min(fails, 8) * 15000 : 0;\n\nconst lastFetch = flow.get('lastFetchTs') || 0;\nif (now - lastFetch >= interval + extraBackoff) {\n    flow.set('lastFetchTs', now);\n    flow.set('zaptecInFlight', true);\n    flow.set('zaptecInFlightSince', now);\n    const mode = watching ? 'live' : (charging ? 'laden' : 'idle');\n    node.status({ fill: 'blue', shape: 'ring', text: 'poll (' + mode + ')' });\n    return msg;\n}\nreturn null;\n",
         "outputs": 1,
         "timeout": "",
         "noerr": 0,
@@ -759,7 +775,7 @@
         "type": "function",
         "z": "f_poll",
         "name": "1. Config & token",
-        "func": "// Configuratie uit VRM (global context), met terugval op omgevingsvariabelen.\nconst g = global.get('zaptecCfg') || {};\nconst cfg = {\n    baseUrl: g.baseUrl || env.get('ZAPTEC_BASE_URL') || 'https://api.zaptec.com',\n    username: g.username || env.get('ZAPTEC_USERNAME') || '',\n    password: g.password || env.get('ZAPTEC_PASSWORD') || '',\n    chargerId: g.chargerId || env.get('ZAPTEC_CHARGER_ID') || '',\n    position: g.position\n};\nflow.set('zaptecCfg', cfg);\n\nif (!cfg.username || !cfg.password || !cfg.chargerId) {\n    node.status({ fill: 'yellow', shape: 'ring', text: 'wacht op VRM-configuratie' });\n    return null;\n}\n\nconst token = global.get('zaptecToken');\nconst expiry = global.get('zaptecTokenExpiry') || 0;\nif (token && Date.now() < (expiry - 60000)) {\n    msg.access_token = token;\n    node.status({ fill: 'green', shape: 'dot', text: 'token ok' });\n    return [null, msg];\n}\n\nmsg.method = 'POST';\nmsg.url = cfg.baseUrl + '/oauth/token';\nmsg.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };\nmsg.payload = 'grant_type=password'\n    + '&username=' + encodeURIComponent(cfg.username)\n    + '&password=' + encodeURIComponent(cfg.password)\n    + '&scope=openid';\nnode.status({ fill: 'blue', shape: 'ring', text: 'token ophalen...' });\nreturn [msg, null];\n",
+        "func": "// Configuratie uit VRM (global context), met terugval op omgevingsvariabelen.\nconst g = global.get('zaptecCfg') || {};\nconst cfg = {\n    baseUrl: g.baseUrl || env.get('ZAPTEC_BASE_URL') || 'https://api.zaptec.com',\n    username: g.username || env.get('ZAPTEC_USERNAME') || '',\n    password: g.password || env.get('ZAPTEC_PASSWORD') || '',\n    chargerId: g.chargerId || env.get('ZAPTEC_CHARGER_ID') || '',\n    position: g.position\n};\nflow.set('zaptecCfg', cfg);\n\nif (!cfg.username || !cfg.password || !cfg.chargerId) {\n    flow.set('zaptecInFlight', false);\n    node.status({ fill: 'yellow', shape: 'ring', text: 'wacht op VRM-configuratie' });\n    return null;\n}\n\nconst token = global.get('zaptecToken');\nconst expiry = global.get('zaptecTokenExpiry') || 0;\nif (token && Date.now() < (expiry - 60000) && !msg._zaptecForceAuth) {\n    msg.access_token = token;\n    msg._zaptecStep = 'state';\n    node.status({ fill: 'green', shape: 'dot', text: 'token ok' });\n    return [null, msg];\n}\n\n// Response-headers van een vorige call nooit hergebruiken. Forceer Connection: close\n// zodat Zaptec/nginx geen stale keep-alive socket reset (ECONNRESET).\ndelete msg.headers;\ndelete msg.responseUrl;\ndelete msg.redirectList;\ndelete msg.responseCookies;\ndelete msg.cookies;\ndelete msg.statusCode;\ndelete msg.error;\ndelete msg.access_token;\n\nmsg.method = 'POST';\nmsg.url = cfg.baseUrl + '/oauth/token';\nmsg.headers = {\n    'Content-Type': 'application/x-www-form-urlencoded',\n    'Accept': 'application/json',\n    'Connection': 'close'\n};\nmsg.payload = 'grant_type=password'\n    + '&username=' + encodeURIComponent(cfg.username)\n    + '&password=' + encodeURIComponent(cfg.password)\n    + '&scope=openid';\nmsg.requestTimeout = 20000;\nmsg._zaptecStep = 'token';\nnode.status({ fill: 'blue', shape: 'ring', text: 'token ophalen...' });\nreturn [msg, null];\n",
         "outputs": 2,
         "timeout": "",
         "noerr": 0,
@@ -810,8 +826,8 @@
         "type": "function",
         "z": "f_poll",
         "name": "2. Token opslaan",
-        "func": "const body = (msg.payload && typeof msg.payload === 'object') ? msg.payload : {};\nif (!body.access_token) {\n    const code = msg.statusCode || '?';\n    node.status({ fill: 'red', shape: 'dot', text: 'auth mislukt (' + code + ')' });\n    node.error('Zaptec: inloggen mislukt (HTTP ' + code + '). Controleer inloggegevens in VRM.', msg);\n    return null;\n}\nglobal.set('zaptecToken', body.access_token);\nglobal.set('zaptecTokenExpiry', Date.now() + ((Number(body.expires_in) || 3600) * 1000));\nmsg.access_token = body.access_token;\nnode.status({ fill: 'green', shape: 'dot', text: 'token vernieuwd' });\nreturn msg;\n",
-        "outputs": 1,
+        "func": "function isRetryable(code, err, payload) {\n    const t = [err && (err.message || err), payload, code].join(' ');\n    if (/ECONNRESET|ETIMEDOUT|ESOCKETTIMEDOUT|EPIPE|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|socket hang up|ECONNABORTED|EHOSTUNREACH|ENETUNREACH|RequestError/i.test(t)) return true;\n    const n = parseInt(code, 10);\n    return code === 429 || n === 429 || n >= 500;\n}\n\nconst body = (msg.payload && typeof msg.payload === 'object') ? msg.payload : {};\nconst code = msg.statusCode;\nconst err = msg.error;\nconst payloadStr = (typeof msg.payload === 'string') ? msg.payload : '';\n\nif (!body.access_token) {\n    if (isRetryable(code, err, payloadStr)) {\n        msg._zaptecStep = 'token';\n        msg.error = { message: (err && (err.message || String(err))) || payloadStr || ('token HTTP ' + (code || '?')) };\n        node.status({ fill: 'yellow', shape: 'ring', text: 'token retry (' + (code || 'net') + ')' });\n        return [null, msg];\n    }\n    flow.set('zaptecInFlight', false);\n    node.status({ fill: 'red', shape: 'dot', text: 'auth mislukt (' + (code || '?') + ')' });\n    node.error('Zaptec: inloggen mislukt (HTTP ' + (code || '?') + '). Controleer inloggegevens in VRM.', msg);\n    return [null, null];\n}\nglobal.set('zaptecToken', body.access_token);\nglobal.set('zaptecTokenExpiry', Date.now() + ((Number(body.expires_in) || 3600) * 1000));\nmsg.access_token = body.access_token;\nmsg._zaptecForceAuth = false;\nnode.status({ fill: 'green', shape: 'dot', text: 'token vernieuwd' });\nreturn [msg, null];\n",
+        "outputs": 2,
         "timeout": "",
         "noerr": 0,
         "initialize": "",
@@ -822,7 +838,14 @@
         "wires": [
             [
                 "p_build"
+            ],
+            [
+                "p_fn_retry"
             ]
+        ],
+        "outputLabels": [
+            "token ok",
+            "retry"
         ]
     },
     {
@@ -830,7 +853,7 @@
         "type": "function",
         "z": "f_poll",
         "name": "3. State-request bouwen",
-        "func": "const cfg = flow.get('zaptecCfg') || {};\nconst token = msg.access_token || global.get('zaptecToken');\nif (!token) { node.error('Geen Zaptec-token beschikbaar.', msg); return null; }\nif (!cfg.chargerId) {\n    node.status({ fill: 'red', shape: 'dot', text: 'charger-id ontbreekt' });\n    return null;\n}\nmsg.method = 'GET';\nmsg.headers = { 'Authorization': 'Bearer ' + token };\nmsg.url = cfg.baseUrl + '/api/chargers/' + encodeURIComponent(cfg.chargerId) + '/state';\ndelete msg.payload;\nreturn msg;\n",
+        "func": "const cfg = flow.get('zaptecCfg') || {};\nconst token = msg.access_token || global.get('zaptecToken');\nif (!token) {\n    flow.set('zaptecInFlight', false);\n    node.error('Geen Zaptec-token beschikbaar.', msg);\n    return null;\n}\nif (!cfg.chargerId) {\n    flow.set('zaptecInFlight', false);\n    node.status({ fill: 'red', shape: 'dot', text: 'charger-id ontbreekt' });\n    return null;\n}\n\n// Response-headers van de token-call nooit doorgeven; Connection: close voorkomt ECONNRESET.\ndelete msg.headers;\ndelete msg.responseUrl;\ndelete msg.redirectList;\ndelete msg.responseCookies;\ndelete msg.cookies;\ndelete msg.statusCode;\ndelete msg.error;\ndelete msg.payload;\n\nmsg.method = 'GET';\nmsg.headers = {\n    'Authorization': 'Bearer ' + token,\n    'Accept': 'application/json',\n    'Connection': 'close'\n};\nmsg.url = cfg.baseUrl + '/api/chargers/' + encodeURIComponent(cfg.chargerId) + '/state';\nmsg.requestTimeout = 20000;\nmsg._zaptecStep = 'state';\nreturn msg;\n",
         "outputs": 1,
         "timeout": "",
         "noerr": 0,
@@ -859,13 +882,13 @@
         "proxy": "",
         "insecureHTTPParser": false,
         "authType": "",
-        "senderr": false,
+        "senderr": true,
         "headers": [],
         "x": 810,
         "y": 200,
         "wires": [
             [
-                "p_map"
+                "p_fn_httpres"
             ]
         ]
     },
@@ -874,14 +897,14 @@
         "type": "function",
         "z": "f_poll",
         "name": "4. Zaptec -> Victron energiemeter",
-        "func": "// Zet Zaptec state-observaties om naar payload voor een Victron energiemeter (rol: EV charger).\nconst obs = Array.isArray(msg.payload)\n    ? msg.payload\n    : (msg.payload && Array.isArray(msg.payload.Data) ? msg.payload.Data : []);\nif (!obs.length) {\n    node.status({ fill: 'yellow', shape: 'ring', text: 'geen state ontvangen' });\n    return null;\n}\n\n// Observaties indexeren op StateId.\nconst s = {};\nfor (const o of obs) {\n    if (o && o.StateId !== undefined && o.StateId !== null) {\n        s[o.StateId] = o.ValueAsString;\n    }\n}\n\nconst num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };\nconst r = (v, d) => { const f = Math.pow(10, d === undefined ? 0 : d); return Math.round((v || 0) * f) / f; };\n\n// Zaptec observatie-ID's (zie https://api.zaptec.com/api/constants).\nconst v1 = num(s[501]), v2 = num(s[502]), v3 = num(s[503]); // Voltage L1/L2/L3 (V)\nconst i1 = num(s[507]), i2 = num(s[508]), i3 = num(s[509]); // Current L1/L2/L3 (A)\nlet pTotal = num(s[513]);                                    // TotalChargePower (W)\n\n// Vermogen per fase (schijnbaar vermogen V*I; EV-laden benadert cos phi = 1).\nconst p1 = v1 * i1, p2 = v2 * i2, p3 = v3 * i3;\nconst pSum = p1 + p2 + p3;\nif (!pTotal) pTotal = pSum;\n\n// Online-status (IsOnline = observatie -2). Als afwezig: aannemen online.\nlet online = 1;\nif (s[-2] !== undefined) online = (s[-2] === '1' || s[-2] === 1) ? 1 : 0;\n\n// Totale (levensduur) energie in kWh voor /Ac/Energy/Forward.\nlet ef = flow.get('zaptecEnergyForward');\nif (typeof ef !== 'number' || isNaN(ef)) ef = 0;\nconst nowMs = Date.now();\nconst lastMs = flow.get('zaptecEnergyTs') || nowMs;\n\n// Probeer de officiele gesigneerde meterstand (OCMF, observatie 554) te lezen.\nfunction parseOcmfKwh(str) {\n    if (!str || typeof str !== 'string' || str.indexOf('OCMF') === -1) return null;\n    try {\n        const parts = str.split('|');\n        for (const p of parts) {\n            const t = p.trim();\n            if (t.charAt(0) === '{' && t.indexOf('\"RD\"') !== -1) {\n                const j = JSON.parse(t);\n                if (Array.isArray(j.RD) && j.RD.length) {\n                    const last = j.RD[j.RD.length - 1];\n                    if (last && last.RV !== undefined && last.RV !== null) {\n                        const val = parseFloat(last.RV);\n                        if (!isNaN(val)) return val;\n                    }\n                }\n            }\n        }\n    } catch (e) { /* negeren, val terug op integratie */ }\n    return null;\n}\n\nconst ocmf = parseOcmfKwh(s[554]);\nif (ocmf !== null && ocmf >= ef) {\n    ef = ocmf; // gebruik de officiele meterstand indien beschikbaar\n} else {\n    // Terugval: integreer vermogen over tijd. Guard voorkomt sprongen na downtime.\n    const dtH = (nowMs - lastMs) / 3600000;\n    if (dtH > 0 && dtH < 1) ef += (pTotal * dtH) / 1000;\n}\nflow.set('zaptecEnergyForward', ef);\nflow.set('zaptecEnergyTs', nowMs);\n\n// Positie in het Victron-systeem (via VRM-formulier of env). 0 = AC-uit 1, 1 = AC-in 1, 2 = AC-uit 2.\nconst _cfg = flow.get('zaptecCfg') || {};\nlet position = (_cfg.position !== undefined && _cfg.position !== null && _cfg.position !== '')\n    ? parseInt(_cfg.position, 10)\n    : parseInt(env.get('ZAPTEC_METER_POSITION'), 10);\nmsg.payload = {\n    Connected: online,\n    Position: isNaN(position) ? 1 : position,\n    'Ac/Power': r(pTotal, 1),\n    'Ac/Energy/Forward': r(ef, 3),\n    'Ac/L1/Voltage': r(v1, 1),\n    'Ac/L1/Current': r(i1, 2),\n    'Ac/L1/Power': r(p1, 1),\n    'Ac/L2/Voltage': r(v2, 1),\n    'Ac/L2/Current': r(i2, 2),\n    'Ac/L2/Power': r(p2, 1),\n    'Ac/L3/Voltage': r(v3, 1),\n    'Ac/L3/Current': r(i3, 2),\n    'Ac/L3/Power': r(p3, 1)\n};\n\nconst _mode = parseInt(s[710], 10);\nconst _charging = (_mode === 3) || (pTotal > 100);\nflow.set('chargeState', _charging ? 'charging' : 'idle');\n\nnode.status({ fill: online ? (_charging ? 'green' : 'blue') : 'grey', shape: 'dot', text: (_charging ? 'laden ' : 'idle ') + r(pTotal, 0) + ' W | ' + r(ef, 2) + ' kWh' });\nreturn msg;\n",
+        "func": "// Zet Zaptec state-observaties om naar payload voor een Victron energiemeter (rol: EV charger).\nconst obs = Array.isArray(msg.payload)\n    ? msg.payload\n    : (msg.payload && Array.isArray(msg.payload.Data) ? msg.payload.Data : []);\nif (!obs.length) {\n    flow.set('zaptecInFlight', false);\n    node.status({ fill: 'yellow', shape: 'ring', text: 'geen state ontvangen' });\n    return null;\n}\n\n// Observaties indexeren op StateId.\nconst s = {};\nfor (const o of obs) {\n    if (o && o.StateId !== undefined && o.StateId !== null) {\n        s[o.StateId] = o.ValueAsString;\n    }\n}\n\nconst num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };\nconst r = (v, d) => { const f = Math.pow(10, d === undefined ? 0 : d); return Math.round((v || 0) * f) / f; };\n\n// Zaptec observatie-ID's (zie https://api.zaptec.com/api/constants).\nconst v1 = num(s[501]), v2 = num(s[502]), v3 = num(s[503]); // Voltage L1/L2/L3 (V)\nconst i1 = num(s[507]), i2 = num(s[508]), i3 = num(s[509]); // Current L1/L2/L3 (A)\nlet pTotal = num(s[513]);                                    // TotalChargePower (W)\n\n// Vermogen per fase (schijnbaar vermogen V*I; EV-laden benadert cos phi = 1).\nconst p1 = v1 * i1, p2 = v2 * i2, p3 = v3 * i3;\nconst pSum = p1 + p2 + p3;\nif (!pTotal) pTotal = pSum;\n\n// Online-status (IsOnline = observatie -2). Als afwezig: aannemen online.\nlet online = 1;\nif (s[-2] !== undefined) online = (s[-2] === '1' || s[-2] === 1) ? 1 : 0;\n\n// Totale (levensduur) energie in kWh voor /Ac/Energy/Forward.\nlet ef = flow.get('zaptecEnergyForward');\nif (typeof ef !== 'number' || isNaN(ef)) ef = 0;\nconst nowMs = Date.now();\nconst lastMs = flow.get('zaptecEnergyTs') || nowMs;\n\n// Probeer de officiele gesigneerde meterstand (OCMF, observatie 554) te lezen.\nfunction parseOcmfKwh(str) {\n    if (!str || typeof str !== 'string' || str.indexOf('OCMF') === -1) return null;\n    try {\n        const parts = str.split('|');\n        for (const p of parts) {\n            const t = p.trim();\n            if (t.charAt(0) === '{' && t.indexOf('\"RD\"') !== -1) {\n                const j = JSON.parse(t);\n                if (Array.isArray(j.RD) && j.RD.length) {\n                    const last = j.RD[j.RD.length - 1];\n                    if (last && last.RV !== undefined && last.RV !== null) {\n                        const val = parseFloat(last.RV);\n                        if (!isNaN(val)) return val;\n                    }\n                }\n            }\n        }\n    } catch (e) { /* negeren, val terug op integratie */ }\n    return null;\n}\n\nconst ocmf = parseOcmfKwh(s[554]);\nif (ocmf !== null && ocmf >= ef) {\n    ef = ocmf; // gebruik de officiele meterstand indien beschikbaar\n} else {\n    // Terugval: integreer vermogen over tijd. Guard voorkomt sprongen na downtime.\n    const dtH = (nowMs - lastMs) / 3600000;\n    if (dtH > 0 && dtH < 1) ef += (pTotal * dtH) / 1000;\n}\nflow.set('zaptecEnergyForward', ef);\nflow.set('zaptecEnergyTs', nowMs);\n\n// Positie in het Victron-systeem (via VRM-formulier of env). 0 = AC-uit 1, 1 = AC-in 1, 2 = AC-uit 2.\nconst _cfg = flow.get('zaptecCfg') || {};\nlet position = (_cfg.position !== undefined && _cfg.position !== null && _cfg.position !== '')\n    ? parseInt(_cfg.position, 10)\n    : parseInt(env.get('ZAPTEC_METER_POSITION'), 10);\nmsg.payload = {\n    Connected: online,\n    Position: isNaN(position) ? 1 : position,\n    'Ac/Power': r(pTotal, 1),\n    'Ac/Energy/Forward': r(ef, 3),\n    'Ac/L1/Voltage': r(v1, 1),\n    'Ac/L1/Current': r(i1, 2),\n    'Ac/L1/Power': r(p1, 1),\n    'Ac/L2/Voltage': r(v2, 1),\n    'Ac/L2/Current': r(i2, 2),\n    'Ac/L2/Power': r(p2, 1),\n    'Ac/L3/Voltage': r(v3, 1),\n    'Ac/L3/Current': r(i3, 2),\n    'Ac/L3/Power': r(p3, 1)\n};\n\nconst _mode = parseInt(s[710], 10);\nconst _charging = (_mode === 3) || (pTotal > 100);\nflow.set('chargeState', _charging ? 'charging' : 'idle');\n\nflow.set('zaptecInFlight', false);\nflow.set('zaptecFailCount', 0);\n\nnode.status({ fill: online ? (_charging ? 'green' : 'blue') : 'grey', shape: 'dot', text: (_charging ? 'laden ' : 'idle ') + r(pTotal, 0) + ' W | ' + r(ef, 2) + ' kWh' });\nreturn msg;\n",
         "outputs": 1,
         "timeout": "",
         "noerr": 0,
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 1080,
+        "x": 1320,
         "y": 200,
         "wires": [
             [
@@ -901,7 +924,7 @@
         "energymeter_nrofphases": 3,
         "default_values": true,
         "outputs": 1,
-        "x": 1360,
+        "x": 1600,
         "y": 180,
         "wires": [
             []
@@ -920,7 +943,7 @@
         "targetType": "msg",
         "statusVal": "",
         "statusType": "auto",
-        "x": 1360,
+        "x": 1600,
         "y": 240,
         "wires": []
     },
@@ -936,7 +959,7 @@
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 1080,
+        "x": 1320,
         "y": 300,
         "wires": [
             [
@@ -953,7 +976,7 @@
         "links": [
             "d_status_in"
         ],
-        "x": 1290,
+        "x": 1540,
         "y": 300,
         "wires": []
     },
@@ -995,7 +1018,7 @@
         "type": "function",
         "z": "f_poll",
         "name": "Fout -> dashboard",
-        "func": "const e = (msg.error && msg.error.message) ? msg.error.message : 'onbekende fout';\nmsg.payload = 'Fout: ' + e + ' @ ' + new Date().toLocaleTimeString('nl-NL');\nreturn msg;\n",
+        "func": "const e = (msg.error && msg.error.message) ? String(msg.error.message) : 'onbekende fout';\nconst friendly = /ECONNRESET/i.test(e)\n    ? 'verbinding met Zaptec verbroken (ECONNRESET). Volgende poging volgt automatisch.'\n    : (/ETIMEDOUT|ESOCKETTIMEDOUT|socket hang up/i.test(e)\n        ? 'Zaptec reageerde niet op tijd. Volgende poging volgt automatisch.'\n        : e);\nmsg.payload = 'Fout: ' + friendly + ' @ ' + new Date().toLocaleTimeString('nl-NL');\nreturn msg;\n",
         "outputs": 1,
         "timeout": "",
         "noerr": 0,
@@ -1009,5 +1032,189 @@
                 "p_status_out"
             ]
         ]
+    },
+    {
+        "id": "p_fn_httpres",
+        "type": "function",
+        "z": "f_poll",
+        "name": "State-response check",
+        "func": "function isRetryableNet(code, err, payload) {\n    const t = [err && (err.message || err), payload, code].join(' ');\n    return /ECONNRESET|ETIMEDOUT|ESOCKETTIMEDOUT|EPIPE|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|socket hang up|ECONNABORTED|EHOSTUNREACH|ENETUNREACH|RequestError/i.test(t);\n}\n\nconst code = msg.statusCode;\nconst err = msg.error;\nconst payloadStr = (typeof msg.payload === 'string') ? msg.payload : '';\n\nif (isRetryableNet(code, err, payloadStr)) {\n    msg._zaptecStep = msg._zaptecStep || 'state';\n    msg.error = { message: (err && (err.message || String(err))) || payloadStr || ('RequestError ' + code) };\n    node.status({ fill: 'yellow', shape: 'ring', text: 'netwerkfout, retry...' });\n    return [null, msg];\n}\n\nif (code === 401 || code === 403) {\n    global.set('zaptecToken', null);\n    global.set('zaptecTokenExpiry', 0);\n    msg._zaptecForceAuth = true;\n    msg._zaptecStep = 'token';\n    msg.error = { message: 'HTTP ' + code + ' (token ongeldig)' };\n    node.status({ fill: 'yellow', shape: 'ring', text: 'token verlopen, opnieuw...' });\n    return [null, msg];\n}\n\nif (code === 429 || (typeof code === 'number' && code >= 500)) {\n    msg._zaptecStep = msg._zaptecStep || 'state';\n    msg.error = { message: 'HTTP ' + code };\n    node.status({ fill: 'yellow', shape: 'ring', text: 'HTTP ' + code + ', retry...' });\n    return [null, msg];\n}\n\nif (code && code !== 200) {\n    flow.set('zaptecInFlight', false);\n    flow.set('zaptecFailCount', (flow.get('zaptecFailCount') || 0) + 1);\n    node.status({ fill: 'red', shape: 'dot', text: 'state HTTP ' + code });\n    node.error('Zaptec state-request mislukt (HTTP ' + code + ').', msg);\n    return [null, null];\n}\n\nreturn [msg, null];\n",
+        "outputs": 2,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1080,
+        "y": 200,
+        "wires": [
+            [
+                "p_map"
+            ],
+            [
+                "p_fn_retry"
+            ]
+        ],
+        "outputLabels": [
+            "ok",
+            "retry"
+        ]
+    },
+    {
+        "id": "p_fn_retry",
+        "type": "function",
+        "z": "f_poll",
+        "name": "Retry / opgeven",
+        "func": "const max = 2;\nconst n = msg._zaptecRetry || 0;\nconst raw = (msg.error && (msg.error.message || msg.error)) || String(msg.statusCode || 'fout');\n\nif (n >= max) {\n    flow.set('zaptecInFlight', false);\n    flow.set('zaptecFailCount', (flow.get('zaptecFailCount') || 0) + 1);\n    node.status({ fill: 'red', shape: 'dot', text: String(raw).slice(0, 48) });\n    msg.error = msg.error || { message: String(raw) };\n    return [null, msg];\n}\n\nmsg._zaptecRetry = n + 1;\n// Exponentiële backoff + jitter (Zaptec raadt dit aan bij tijdelijke fouten / 429).\nconst base = 1500 * Math.pow(2, n);\nmsg.delay = Math.round(base + Math.random() * base * 0.4);\nnode.status({ fill: 'yellow', shape: 'ring', text: 'retry ' + msg._zaptecRetry + '/' + max + ' (' + msg.delay + ' ms)' });\ndelete msg.error;\ndelete msg.statusCode;\ndelete msg.payload;\nreturn [msg, null];\n",
+        "outputs": 2,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 340,
+        "y": 500,
+        "wires": [
+            [
+                "p_retry_delay"
+            ],
+            [
+                "p_errdbg",
+                "p_fn_errstatus"
+            ]
+        ],
+        "outputLabels": [
+            "opnieuw",
+            "opgeven"
+        ]
+    },
+    {
+        "id": "p_retry_delay",
+        "type": "delay",
+        "z": "f_poll",
+        "name": "wacht voor retry",
+        "pauseType": "delayv",
+        "timeout": "2",
+        "timeoutUnits": "seconds",
+        "rate": "1",
+        "nbRateUnits": "1",
+        "rateUnits": "second",
+        "randomFirst": "1",
+        "randomLast": "5",
+        "randomUnits": "seconds",
+        "drop": false,
+        "outputs": 1,
+        "x": 560,
+        "y": 500,
+        "wires": [
+            [
+                "p_fn_rereq"
+            ]
+        ]
+    },
+    {
+        "id": "p_fn_rereq",
+        "type": "function",
+        "z": "f_poll",
+        "name": "Retry-route",
+        "func": "if (msg._zaptecStep === 'token' || msg._zaptecForceAuth) {\n    return [msg, null];\n}\nreturn [null, msg];\n",
+        "outputs": 2,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 780,
+        "y": 500,
+        "wires": [
+            [
+                "p_prep"
+            ],
+            [
+                "p_build"
+            ]
+        ],
+        "outputLabels": [
+            "token",
+            "state"
+        ]
+    },
+    {
+        "id": "p_retry_comment",
+        "type": "comment",
+        "z": "f_poll",
+        "name": "ECONNRESET: Connection close + max. 2 retries met backoff",
+        "info": "Zaptec/nginx sluit idle keep-alive sockets. Zonder Connection: close en retry geeft Node-RED RequestError: read ECONNRESET. Tijdelijke fouten (reset, timeout, 429, 502-504) worden tot 2x opnieuw geprobeerd; 401/403 forceert een nieuw token.",
+        "x": 390,
+        "y": 460,
+        "wires": []
+    },
+    {
+        "id": "d_page_delay",
+        "type": "delay",
+        "z": "f_dash",
+        "name": "wacht op UI",
+        "pauseType": "delay",
+        "timeout": "400",
+        "timeoutUnits": "milliseconds",
+        "rate": "1",
+        "nbRateUnits": "1",
+        "rateUnits": "second",
+        "randomFirst": "1",
+        "randomLast": "5",
+        "randomUnits": "seconds",
+        "drop": false,
+        "outputs": 1,
+        "x": 250,
+        "y": 700,
+        "wires": [
+            [
+                "d_fn_populate"
+            ]
+        ]
+    },
+    {
+        "id": "d_fn_summary",
+        "type": "function",
+        "z": "f_dash",
+        "name": "Huidige instelling",
+        "func": "const cfg = global.get('zaptecCfg') || {};\nconst names = global.get('zaptecChargerNames') || {};\nconst posLabels = { 0: 'AC-uit', 1: 'AC-in' };\nconst pos = (cfg.position in posLabels) ? posLabels[cfg.position] : (cfg.position != null && cfg.position !== '' ? String(cfg.position) : '–');\nconst charger = names[cfg.chargerId] || cfg.chargerId || '–';\nmsg.payload = 'E-mail: ' + (cfg.username || '–') + '  |  Laadpaal: ' + charger + '  |  Positie: ' + pos;\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 620,
+        "y": 640,
+        "wires": [
+            [
+                "d_summary_txt"
+            ]
+        ]
+    },
+    {
+        "id": "d_summary_txt",
+        "type": "ui-text",
+        "z": "f_dash",
+        "group": "ui_group",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "name": "Huidige instelling",
+        "label": "Huidige instelling",
+        "format": "{{msg.payload}}",
+        "layout": "col-center",
+        "style": false,
+        "font": "",
+        "fontSize": 16,
+        "color": "#333333",
+        "wrapText": true,
+        "className": "",
+        "value": "payload",
+        "valueType": "msg",
+        "x": 850,
+        "y": 640,
+        "wires": []
     }
 ]
