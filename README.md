@@ -46,6 +46,10 @@ laadpaal.
    deze onder de service `com.victronenergy.evcharger.*`, waardoor de laadpaal in
    de GX-GUI en VRM als EV-lader verschijnt.
 
+HTTP-calls naar Zaptec gebruiken `Connection: close` (geen keep-alive). Tijdelijke
+netwerkfouten zoals `ECONNRESET`, timeouts, HTTP 429 en 502–504 worden tot twee
+keer opnieuw geprobeerd met backoff; een 401/403 dwingt een nieuw token af.
+
 ## Wat de virtuele energiemeter (rol EV charger) wél en niet toont
 
 > **Belangrijk – gedrag in Venus OS 3.80**
@@ -323,6 +327,9 @@ laadpaal of installatie gewijzigd.
 - **Tokengeldigheid**: tokens worden gecachet en automatisch vernieuwd. De ROPC
   password-grant wordt door Zaptec ondersteund; volg toekomstige wijzigingen in
   hun authenticatie-provider (zie de Zaptec-documentatie).
+- **Tijdelijke API-fouten**: `ECONNRESET`, timeouts en HTTP 429/5xx worden tot
+  twee keer opnieuw geprobeerd. Blijft Zaptec onbereikbaar, dan pollen we
+  langzamer tot het weer lukt (de meter blijft op de laatste geldige waarde).
 
 ---
 
@@ -335,6 +342,7 @@ laadpaal of installatie gewijzigd.
 | Status `wacht op VRM-configuratie`    | Nog niets ingevuld; vul het VRM-formulier in of zet de env-variabelen.     |
 | `charger-id ontbreekt`                | Nog geen laadpaal gekozen; sla inloggegevens op en kies er één in de dropdown. |
 | `geen state ontvangen`                | Charger offline, of account heeft geen owner-rechten op de installatie.    |
+| `RequestError: read ECONNRESET` / status `verbinding met Zaptec verbroken` | Zaptec (nginx) heeft de TCP-verbinding verbroken, meestal door een gesloten keep-alive socket of een korte storing. De flow sluit verbindingen bewust (`Connection: close`) en probeert het tot 2× opnieuw. Een losse melding is onschuldig; de volgende poll gaat vanzelf verder. Blijft het **aanhouden**: GX herstarten, internetpad naar `api.zaptec.com` controleren, of even later opnieuw. Bij een GX Touch kan "live kijken" continu actief zijn (poll elke 5 s); dat is geen oorzaak van ECONNRESET, maar bij aanhoudende resets kun je `ZAPTEC_POLL_WATCHING_SEC` tijdelijk verhogen. |
 | Dashboard-tegel/formulier ontbreekt   | `@flowfuse/node-red-dashboard` niet geïnstalleerd, of flow niet gedeployed.|
 | "Unknown node" bij importeren         | Installeer eerst `@flowfuse/node-red-dashboard` via *Manage Palette*.      |
 | Meldingen `Cannot save user settings: Settings not available` / `Property 'telemetryEnabled'…` | **Onschuldig.** Dit zijn bekende Node-RED/Venus OS-meldingen van Dashboard 2.0 rond runtime-settings/telemetry; ze blokkeren de werking niet en mogen genegeerd worden. |
