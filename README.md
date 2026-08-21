@@ -46,7 +46,8 @@ opgehaald via de publieke Fraunhofer Energy-Charts API.
 Losse flow die de **Enphase IQ Gateway** read-only via de **lokale API** uitleest
 (werkt voor Metered **én** Standard, ook zonder meetspoelen) en de PV-productie
 als virtuele Victron **PV-omvormer** toont. Native Modbus TCP van Victron is
-daarmee niet nodig.
+daarmee niet nodig. Het VRM-formulier zit op **`/dashboard`** (tegel
+**Dashboard 2.0**), niet op `/dashboard-enphase/enphase`.
 
 - [`enphase-flows.json`](./enphase-flows.json) – importeerbare Node-RED-flow;
 - [`README-enphase.md`](./README-enphase.md) – API, IP-zoeken, token, beperkingen

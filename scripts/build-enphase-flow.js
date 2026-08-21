@@ -118,7 +118,7 @@ nodes.push(
     type: 'tab',
     label: 'Enphase configuratie (VRM)',
     disabled: false,
-    info: 'Invulformulier: Enlighten-e-mail, wachtwoord en IQ Gateway-serienummer. De flow zoekt zelf het LAN-IP, haalt een local-API-token op en toont status. Bereikbaar via VRM -> Venus OS Large -> dashboard-tegel. Vereist @flowfuse/node-red-dashboard.'
+    info: 'Invulformulier: Enlighten-e-mail, wachtwoord en IQ Gateway-serienummer. De flow zoekt zelf het LAN-IP, haalt een local-API-token op en toont status. Bereikbaar via VRM -> Venus OS Large -> Dashboard 2.0 (/dashboard). Vereist @flowfuse/node-red-dashboard.'
   },
   {
     id: 'f_e_poll',
@@ -127,8 +127,13 @@ nodes.push(
     disabled: false,
     info: 'Leest de IQ Gateway read-only uit via de lokale API (werkt voor Metered én Standard, zonder Modbus TCP) en toont de PV-productie als virtuele Victron PV-omvormer (Venus OS 3.70+ / node-red-contrib-victron).'
   },
+  // New ids (ui_base / e_ui_page2 / e_ui_group2): Node-RED does not overwrite
+  // existing dashboard config nodes on import. The first Enphase import created
+  // e_ui_base at /dashboard-enphase; VRM's Dashboard 2.0 tile always opens
+  // /dashboard and therefore 404'd. Reusing Zaptec's ui_base id mounts the
+  // form on that same default path. Page path / so the proxy URL needs no suffix.
   {
-    id: 'e_ui_base',
+    id: 'ui_base',
     type: 'ui-base',
     name: 'Enphase',
     path: '/dashboard',
@@ -164,11 +169,11 @@ nodes.push(
     }
   },
   {
-    id: 'e_ui_page',
+    id: 'e_ui_page2',
     type: 'ui-page',
     name: 'Enphase',
-    ui: 'e_ui_base',
-    path: '/enphase',
+    ui: 'ui_base',
+    path: '/',
     icon: 'solar-power',
     layout: 'grid',
     theme: 'e_ui_theme',
@@ -184,10 +189,10 @@ nodes.push(
     disabled: 'false'
   },
   {
-    id: 'e_ui_group',
+    id: 'e_ui_group2',
     type: 'ui-group',
     name: 'Enphase instellingen',
-    page: 'e_ui_page',
+    page: 'e_ui_page2',
     width: 6,
     height: 1,
     order: 1,
@@ -215,8 +220,8 @@ nodes.push({
   id: 'e_d_comment',
   type: 'comment',
   z: 'f_e_dash',
-  name: 'Configuratie via VRM (Venus OS Large -> dashboard-tegel)',
-  info: 'Vul Enlighten-e-mail, wachtwoord en IQ Gateway-serienummer in. De flow vindt zelf het IP (envoy.local + LAN-scan van /info), haalt een JWT op bij Enlighten/entrez en leest daarna lokaal uit. Token owner ≈ 1 jaar, installer ≈ 12 uur. MFA: plak een token van https://entrez.enphaseenergy.com.',
+  name: 'Configuratie via VRM (Venus OS Large -> Dashboard 2.0 -> /dashboard)',
+  info: 'Vul Enlighten-e-mail, wachtwoord en IQ Gateway-serienummer in. De flow vindt zelf het IP (envoy.local + LAN-scan van /info), haalt een JWT op bij Enlighten/entrez en leest daarna lokaal uit. Token owner ≈ 1 jaar, installer ≈ 12 uur. MFA: plak een token van https://entrez.enphaseenergy.com. VRM opent altijd /dashboard (niet /dashboard-enphase/enphase).',
   x: 330,
   y: 40,
   wires: []
@@ -268,7 +273,7 @@ nodes.push({
   type: 'ui-form',
   z: 'f_e_dash',
   name: 'Inloggegevens',
-  group: 'e_ui_group',
+  group: 'e_ui_group2',
   label: '',
   order: 2,
   width: 0,
@@ -362,7 +367,7 @@ nodes.push({
   id: 'e_d_pos',
   type: 'ui-dropdown',
   z: 'f_e_dash',
-  group: 'e_ui_group',
+  group: 'e_ui_group2',
   name: 'Positie',
   label: 'Positie van de PV-omvormer',
   tooltip: 'Victron D-Bus /Position: 0 = AC-in 1, 1 = AC-uit, 2 = AC-in 2',
@@ -414,7 +419,7 @@ nodes.push({
   id: 'e_d_btn_discover',
   type: 'ui-button',
   z: 'f_e_dash',
-  group: 'e_ui_group',
+  group: 'e_ui_group2',
   name: 'Gateway zoeken',
   label: 'Gateway zoeken',
   order: 4,
@@ -450,7 +455,7 @@ nodes.push({
   id: 'e_d_btn_token',
   type: 'ui-button',
   z: 'f_e_dash',
-  group: 'e_ui_group',
+  group: 'e_ui_group2',
   name: 'Token vernieuwen',
   label: 'Token vernieuwen',
   order: 5,
@@ -734,7 +739,7 @@ nodes.push({
   id: 'e_d_status_txt',
   type: 'ui-text',
   z: 'f_e_dash',
-  group: 'e_ui_group',
+  group: 'e_ui_group2',
   order: 7,
   width: 0,
   height: 0,
@@ -770,7 +775,7 @@ nodes.push({
   id: 'e_d_notif',
   type: 'ui-notification',
   z: 'f_e_dash',
-  ui: 'e_ui_base',
+  ui: 'ui_base',
   name: 'Melding',
   position: 'top right',
   colorDefault: true,
@@ -793,7 +798,7 @@ nodes.push({
   id: 'e_d_pageview',
   type: 'ui-event',
   z: 'f_e_dash',
-  ui: 'e_ui_base',
+  ui: 'ui_base',
   name: 'Pagina geopend',
   x: 140,
   y: 620,
@@ -875,7 +880,7 @@ nodes.push({
   id: 'e_d_summary_txt',
   type: 'ui-text',
   z: 'f_e_dash',
-  group: 'e_ui_group',
+  group: 'e_ui_group2',
   order: 1,
   width: 0,
   height: 0,
