@@ -145,8 +145,10 @@ Eén bestand: [`enphase-flows.json`](./enphase-flows.json).
 2. Open Node-RED op de GX (VRM → *Venus OS Large* → Node-RED, of
    `http://<gx-ip>:1880`).
 3. Menu → **Import** → plak [`enphase-flows.json`](./enphase-flows.json) →
-   **Import** → **Deploy**.
-4. Configureer via de VRM-tegel **Enphase**.
+   **Import** (niet als kopie) → **Deploy**.
+4. Open in VRM onder **Venus OS Large** de tegel **Dashboard 2.0**.
+   Die gaat altijd naar `https://<site>-nodered.proxyrelay….victronenergy.com/dashboard`
+   (lokaal: `http://<gx-ip>:1880/dashboard`).
 
 Tabbladen:
 
@@ -154,9 +156,27 @@ Tabbladen:
   *Gateway zoeken* en *Token vernieuwen*.
 - **Enphase -> Victron (uitlezen)** – lokale poll + virtuele PV-omvormer.
 
-De flow kan naast Zaptec/Viessmann/Thermia draaien (eigen node-id’s). Het
-invulformulier staat op **`/dashboard`** — dezelfde URL als de knop
-*Dashboard* in Node-RED (`http://<gx-ip>:1880/dashboard`).
+De flow deelt het standaard Dashboard 2.0-pad (`/dashboard`) met Zaptec, zodat
+de VRM-tegel werkt. Viessmann blijft op `/dashboard-viessmann`.
+
+### Bestaande installatie (pad `/dashboard-enphase/enphase`)
+
+Node-RED **overschrijft bestaande dashboard-configuratie-nodes niet**. De eerste
+Enphase-import zette `ui-base` op `/dashboard-enphase` en de pagina op
+`/enphase`. Opnieuw importeren van alleen een gewijzigd pad liet die nodes
+staan — daarom bleef alleen
+`…/dashboard-enphase/enphase` werken, terwijl VRM **Dashboard 2.0** naar
+`…/dashboard` gaat.
+
+1. Importeer deze `enphase-flows.json` opnieuw (**niet** “import as copy”).
+2. **Deploy**.
+3. Menu → **Configuration nodes** → `ui-base` met naam **Enphase** en pad
+   `/dashboard-enphase` → **delete** (wees-node van de eerste import).
+   Verwijder zo nodig ook de oude `ui-page` `/enphase`.
+4. Als `…/dashboard` daarna nog 404 geeft: Venus OS Large → Node-RED even
+   uit en weer aan (routes van Dashboard 2.0 worden bij start geregistreerd).
+5. Gebruik daarna alleen de tegel **Dashboard 2.0** (`/dashboard`). De extra
+   tegel naar `/dashboard-enphase` mag weg.
 
 Regenereren na wijziging van de helpers:
 
@@ -171,7 +191,8 @@ node test-enphase-flow.js
 
 ### Optie A – Invulvelden in VRM (aanbevolen)
 
-1. Open in VRM onder **Venus OS Large** de tegel **Enphase**.
+1. Open in VRM onder **Venus OS Large** de tegel **Dashboard 2.0**
+   (`/dashboard`).
 2. Vul in:
    - **Gebruikersnaam (e-mail)** en **Wachtwoord** van Enlighten;
    - **IQ Gateway serienummer**;
@@ -239,6 +260,7 @@ Geen power-limit, geen relay, geen Ensemble-sturing.
 | 0 W op Metered | CT `activeCount: 0`? Spoelen niet ingeleerd → flow valt terug op micro-omvormers |
 | Meter verschijnt niet in GX | `node-red-contrib-victron` te oud; device-type `pvinverter` vereist ~Venus 3.60+ |
 | Zonne-opbrengst leeg in VRM | `StatusCode` 7 tijdens productie; energie op `Ac/Energy/Forward` (kWh) |
+| Alleen `…/dashboard-enphase/enphase` werkt; `…/dashboard` is 404 | Oude `ui-base` is blijven staan. Flow opnieuw importeren (nieuwe node-id’s), wees-`ui-base` `/dashboard-enphase` verwijderen, Deploy, Node-RED herstarten. |
 
 ---
 

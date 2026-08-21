@@ -205,9 +205,28 @@ assert.equal(meter.device, 'pvinverter')
 assert.equal(meter.pvinverter_nrofphases, 3)
 assert.equal(meter.pvinverter_auto_energy, true)
 
-const dash = byId.get('e_ui_base')
+assert.equal(byId.has('e_ui_base'), false, 'oude ui-base id e_ui_base: Node-RED overschrijft bestaande config-nodes niet')
+assert.equal(byId.has('e_ui_page'), false, 'oude ui-page id e_ui_page moet vervangen zijn')
+assert.equal(byId.has('e_ui_group'), false, 'oude ui-group id e_ui_group moet vervangen zijn')
+
+const dash = byId.get('ui_base')
 assert.equal(dash.type, 'ui-base')
 assert.equal(dash.path, '/dashboard')
+
+const page = byId.get('e_ui_page2')
+assert.equal(page.type, 'ui-page')
+assert.equal(page.ui, 'ui_base')
+assert.equal(page.path, '/')
+
+const group = byId.get('e_ui_group2')
+assert.equal(group.type, 'ui-group')
+assert.equal(group.page, 'e_ui_page2')
+
+assert.equal(
+  flow.some((n) => n.path === '/dashboard-enphase' || n.path === '/enphase'),
+  false,
+  'geen oude dashboard-paden'
+)
 
 const mapNode = byId.get('e_p_map')
 assert.match(mapNode.func, /function pickProduction/)
