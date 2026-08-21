@@ -131,7 +131,7 @@ nodes.push(
     id: 'e_ui_base',
     type: 'ui-base',
     name: 'Enphase',
-    path: '/dashboard-enphase',
+    path: '/dashboard',
     appIcon: '',
     includeClientData: false,
     acceptsClientConfig: ['ui-notification', 'ui-control'],
