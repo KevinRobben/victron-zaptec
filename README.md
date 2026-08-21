@@ -4,16 +4,17 @@ Node-RED-applicatie die een **Zaptec laadpaal read-only** uitleest via de centra
 ZapCloud API en de meetwaarden in **Victron (Venus OS / VRM)** presenteert als een
 **energiemeter met de rol `EV charger`**.
 
-> **Meerdere integraties, dezelfde architectuur.** Naast Zaptec is er een
-> gescheiden **Viessmann warmtepomp**-integratie die op dezelfde manier werkt
-> (VRM-invulformulier + adaptief read-only uitlezen als virtuele Victron-meter).
-> Elke integratie is een aparte flow met eigen tabbladen, dashboard-tegel en
+> **Meerdere integraties, dezelfde architectuur.** Naast Zaptec zijn er
+> gescheiden integraties die op dezelfde manier werken (VRM-invulformulier +
+> adaptief read-only uitlezen als virtueel Victron-apparaat). Elke integratie
+> is een aparte flow met eigen tabbladen, dashboard-tegel en
 > configuratiebestand:
 >
 > | Integratie | Flow-bestand | Documentatie |
 > |------------|--------------|--------------|
-> | Zaptec laadpaal | [`flows.json`](./flows.json) | dit document |
+> | Zaptec laadpaal | [`zaptec-flows.json`](./zaptec-flows.json) | dit document |
 > | Viessmann warmtepomp | [`viessmann-flows.json`](./viessmann-flows.json) | [`README-viessmann.md`](./README-viessmann.md) |
+> | Enphase IQ Gateway (PV) | [`enphase-flows.json`](./enphase-flows.json) | [`README-enphase.md`](./README-enphase.md) |
 
 Op de GX en in VRM verschijnt de laadpaal daardoor als een gemeten EV-lader
 (vermogen, stroom/spanning per fase en verbruikte energie). Er wordt **niets
@@ -39,6 +40,17 @@ de tapwater-setpoints direct te wijzigen. Alle installatie-instellingen staan in
 één duidelijk gemarkeerde configuratienode; schrijven is standaard uitgeschakeld.
 Nederlandse day-aheadprijzen worden zonder account of API-token automatisch
 opgehaald via de publieke Fraunhofer Energy-Charts API.
+
+## Enphase IQ Gateway
+
+Losse flow die de **Enphase IQ Gateway** read-only via de **lokale API** uitleest
+(werkt voor Metered **én** Standard, ook zonder meetspoelen) en de PV-productie
+als virtuele Victron **PV-omvormer** toont. Native Modbus TCP van Victron is
+daarmee niet nodig.
+
+- [`enphase-flows.json`](./enphase-flows.json) – importeerbare Node-RED-flow;
+- [`README-enphase.md`](./README-enphase.md) – API, IP-zoeken, token, beperkingen
+  en VRM-formulier.
 
 ---
 
@@ -150,14 +162,14 @@ De volledige lijst met observatie-ID's staat in
 
 ## Installatie
 
-Eén bestand: [`flows.json`](./flows.json).
+Eén bestand: [`zaptec-flows.json`](./zaptec-flows.json).
 
 1. Installeer eenmalig in Node-RED (**Manage Palette → Install**) de package
    **`@flowfuse/node-red-dashboard`** (Dashboard 2.0, voor de VRM-invulvelden). Dit
    vereist tijdelijk internettoegang op de GX.
 2. Open Node-RED op de GX (via VRM → *Venus OS Large* → Node-RED, of
    `http://<gx-ip>:1880`).
-3. Menu (rechtsboven) → **Import** → plak de inhoud van [`flows.json`](./flows.json)
+3. Menu (rechtsboven) → **Import** → plak de inhoud van [`zaptec-flows.json`](./zaptec-flows.json)
    → **Import**.
 4. **Deploy**.
 5. Configureer via het VRM-formulier (zie *Configuratie* hieronder).

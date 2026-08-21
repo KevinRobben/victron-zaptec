@@ -14,7 +14,7 @@ Deze integratie deelt bewust dezelfde onderliggende architectuur als de
 inloggegevens en een **adaptief uitlees-flow** dat de meetwaarden als virtuele
 Victron-meter toont. Alleen de API en de authenticatie verschillen.
 
-- **Zaptec-flow:** [`flows.json`](./flows.json)
+- **Zaptec-flow:** [`zaptec-flows.json`](./zaptec-flows.json)
 - **Viessmann-flow:** [`viessmann-flows.json`](./viessmann-flows.json)
 
 De twee flows zijn volledig gescheiden (eigen tabbladen, eigen dashboard-tegel,
