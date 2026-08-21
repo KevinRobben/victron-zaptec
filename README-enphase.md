@@ -16,8 +16,8 @@ ESS-feed-in-limiet via Modbus blijft een aparte, optionele Victron-functie.
 
 De architectuur is dezelfde als [Zaptec](./README.md) en
 [Viessmann](./README-viessmann.md): een **VRM-invulformulier** plus een adaptief
-uitlees-flow. Eigen tabbladen, eigen dashboard-tegel
-(`/dashboard-enphase`) en eigen configbestand (`/data/enphase-config.json`).
+uitlees-flow. Eigen tabbladen, het standaard Node-RED-dashboard
+(`/dashboard`) en eigen configbestand (`/data/enphase-config.json`).
 
 ---
 
@@ -154,8 +154,9 @@ Tabbladen:
   *Gateway zoeken* en *Token vernieuwen*.
 - **Enphase -> Victron (uitlezen)** – lokale poll + virtuele PV-omvormer.
 
-De flow kan naast Zaptec/Viessmann/Thermia draaien (eigen node-id’s en
-dashboard-pad `/dashboard-enphase`).
+De flow kan naast Zaptec/Viessmann/Thermia draaien (eigen node-id’s). Het
+invulformulier staat op **`/dashboard`** — dezelfde URL als de knop
+*Dashboard* in Node-RED (`http://<gx-ip>:1880/dashboard`).
 
 Regenereren na wijziging van de helpers:
 

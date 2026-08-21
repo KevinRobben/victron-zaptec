@@ -205,6 +205,10 @@ assert.equal(meter.device, 'pvinverter')
 assert.equal(meter.pvinverter_nrofphases, 3)
 assert.equal(meter.pvinverter_auto_energy, true)
 
+const dash = byId.get('e_ui_base')
+assert.equal(dash.type, 'ui-base')
+assert.equal(dash.path, '/dashboard')
+
 const mapNode = byId.get('e_p_map')
 assert.match(mapNode.func, /function pickProduction/)
 assert.match(mapNode.func, /function mapToVictron/)
